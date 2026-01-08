@@ -9,7 +9,6 @@
     <script>
         /** 
          * Polyfill para compatibilidade com bibliotecas que esperam o objeto 'process'.
-         * O Vite substituirá as chamadas específicas (ex: process.env.VAR) por strings literais.
          */
         window.global = window;
         if (!window.process) {
