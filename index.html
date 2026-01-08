@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PackScan Pro</title>
+    <!-- Favicon baseado no logotipo blue scan -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='25' fill='%232563eb'/%3E%3Cpath d='M30 35 V30 H35 M65 30 H70 V35 M70 65 V70 H65 M35 70 H30 V65' stroke='white' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+    <script>
+        // Polyfill síncrono para garantir que bibliotecas Node-dependents não quebrem
+        window.process = { 
+            env: { 
+                NODE_ENV: 'production',
+                // Fallbacks para Supabase caso o define do Vite não esteja ativo no ambiente de execução
+                SUPABASE_URL: 'https://oocyvbexigpaqgucqcwc.supabase.co',
+                SUPABASE_ANON_KEY: 'sb_publishable_UE3CY9AkCcnRTPNVyvPQaQ_2DNwzY_w'
+            }, 
+            nextTick: (cb) => setTimeout(cb, 0),
+            browser: true 
+        };
+        window.global = window;
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.462.0?external=react,react-dom",
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+    <div id="root"></div>
+    <!-- Script carregado como módulo ESM -->
+    <script type="module" src="index.tsx"></script>
+</body>
+</html>

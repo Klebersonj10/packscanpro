@@ -1,0 +1,7 @@
+{
+  "name": "PackScan Pro - Extrator de Rótulos",
+  "description": "Uma ferramenta avançada para extrair dados de embalagens via OCR (Gemini AI), organizando CNPJ, fabricantes e detalhes do produto em listas exportáveis para Excel e JSON.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
