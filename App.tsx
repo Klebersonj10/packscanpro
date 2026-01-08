@@ -15,6 +15,18 @@ import { extractDataFromPhotos } from './services/geminiService.ts';
 import { supabase } from './services/supabase.ts';
 import * as XLSX from 'xlsx';
 
+// Utilitário para garantir que o erro seja uma string legível
+const getErrorMessage = (err: any): string => {
+  if (!err) return "Erro desconhecido";
+  if (typeof err === 'string') return err;
+  if (err.message && typeof err.message === 'string') return err.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+};
+
 const getCnpjRaiz = (cnpj: string | string[]): string => {
   const value = Array.isArray(cnpj) ? (cnpj[0] || '') : (cnpj || '');
   if (!value || value === 'N/I') return '';
@@ -59,9 +71,10 @@ const App: React.FC = () => {
     [globalConfig.reference_cnpjs]
   );
 
-  const addNotification = (title: string, message: string, type: 'success' | 'info' | 'warning') => {
+  const addNotification = (title: string, message: any, type: 'success' | 'info' | 'warning') => {
     const id = Math.random().toString(36).substr(2, 9);
-    setNotifications(prev => [{ id, title, message, type, timestamp: new Date().toISOString(), read: false }, ...prev].slice(0, 5));
+    const msgString = getErrorMessage(message);
+    setNotifications(prev => [{ id, title, message: msgString, type, timestamp: new Date().toISOString(), read: false }, ...prev].slice(0, 5));
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
   };
 
@@ -83,9 +96,8 @@ const App: React.FC = () => {
   const saveGlobalSettings = async (email: string, cnpjs: string) => {
     if (!supabase) return;
     try {
-      // Upsert global configuration into app_settings table
       const { error } = await supabase.from('app_settings').upsert({ 
-        id: 1, // Single record
+        id: 1, 
         ic_email: email, 
         reference_cnpjs: cnpjs,
         updated_at: new Date().toISOString()
@@ -96,7 +108,7 @@ const App: React.FC = () => {
       addNotification("Configuração Salva", "A base de CNPJs foi atualizada para todos os usuários.", "success");
     } catch (err: any) {
       console.error(err);
-      addNotification("Erro", "Falha ao salvar no banco de dados.", "warning");
+      addNotification("Erro", getErrorMessage(err), "warning");
     }
   };
 
@@ -196,8 +208,9 @@ const App: React.FC = () => {
         setIsLoginView(true);
       }
     } catch (err: any) { 
-      setAuthError(err.message); 
-      addNotification("Erro", err.message, "warning");
+      const msg = getErrorMessage(err);
+      setAuthError(msg); 
+      addNotification("Erro", msg, "warning");
     } finally { 
       setIsLoadingAuth(false); 
     }
@@ -230,68 +243,50 @@ const App: React.FC = () => {
       addNotification("Sucesso", "Todos os 14 campos atualizados com êxito.", "success");
     } catch (err: any) { 
       console.error("Update Error:", err);
-      addNotification("Erro", "Falha ao salvar edições.", "warning"); 
+      addNotification("Erro", getErrorMessage(err), "warning"); 
     }
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    if (!supabase) {
-      alert("Erro crítico: Banco de dados não conectado.");
-      return;
-    }
-    if (!window.confirm("Deseja realmente EXCLUIR DEFINITIVAMENTE este item? Esta ação não pode ser desfeita.")) return;
+    if (!supabase) return;
+    if (!window.confirm("Deseja realmente EXCLUIR DEFINITIVAMENTE este item?")) return;
     
-    // Atualização otimista: remove do estado local imediatamente
     setLists(prev => prev.map(list => ({
       ...list,
       entries: list.entries.filter(e => e.id !== entryId)
     })));
 
     try {
-      const { error } = await supabase
-        .from('product_entries')
-        .delete()
-        .eq('id', entryId);
-
+      const { error } = await supabase.from('product_entries').delete().eq('id', entryId);
       if (error) throw error;
-      
-      addNotification("Sucesso", "Item removido com sucesso.", "success");
+      addNotification("Sucesso", "Item removido.", "success");
     } catch (err: any) { 
       console.error("Delete Entry Error:", err);
-      alert("Falha ao excluir item no servidor. Verifique sua conexão. Os dados serão sincronizados novamente.");
-      await fetchLists(); // Re-sincroniza caso falhe
+      addNotification("Erro", getErrorMessage(err), "warning");
+      await fetchLists(); 
     }
   };
 
   const handleDeleteList = async (listId: string) => {
-    if (!supabase) {
-      alert("Erro crítico: Banco de dados não conectado.");
-      return;
-    }
-    if (!window.confirm("ATENÇÃO: Você excluirá a LISTA e TODOS os itens dela definitivamente do servidor. Confirmar?")) return;
+    if (!supabase) return;
+    if (!window.confirm("ATENÇÃO: Você excluirá a LISTA e TODOS os itens dela. Confirmar?")) return;
     
-    // Backup do estado para caso de erro
     const originalLists = [...lists];
-
     try {
-      // Atualização otimista
       setActiveView('home');
       setLists(prev => prev.filter(l => l.id !== listId));
       setCurrentListId(null);
 
-      // Deletar itens primeiro para evitar erros de restrição de chave estrangeira
       const { error: entriesError } = await supabase.from('product_entries').delete().eq('list_id', listId);
       if (entriesError) throw entriesError;
       
-      // Deletar a própria lista
       const { error: listError } = await supabase.from('inspection_lists').delete().eq('id', listId);
       if (listError) throw listError;
       
-      addNotification("Sucesso", "Lista e itens excluídos definitivamente.", "success");
+      addNotification("Sucesso", "Lista excluída.", "success");
     } catch (err: any) { 
       console.error("Delete List Error:", err);
-      alert("Falha ao excluir lista no servidor: " + (err.message || "Erro de conexão."));
-      // Reverte o estado local em caso de falha no servidor
+      addNotification("Erro", getErrorMessage(err), "warning");
       setLists(originalLists);
       await fetchLists();
     }
@@ -304,7 +299,6 @@ const App: React.FC = () => {
       const extracted = await extractDataFromPhotos(photos);
       const raiz = getCnpjRaiz(extracted.cnpj);
       
-      // Comparison using Global Reference Base from DB
       const isNew = !cleanRefCnpjs.some(ref => {
         const firstCnpj = extracted.cnpj[0]?.replace(/\D/g, '') || '';
         return firstCnpj.includes(ref) || ref.includes(firstCnpj);
@@ -325,7 +319,7 @@ const App: React.FC = () => {
       addNotification("Sucesso", "Dados extraídos com base na referência global.", "success");
     } catch (err: any) { 
       console.error(err);
-      addNotification("Erro", "IA falhou ao processar imagens.", "warning"); 
+      addNotification("Erro", getErrorMessage(err), "warning"); 
     } finally { setIsProcessing(false); }
   };
 
@@ -345,7 +339,7 @@ const App: React.FC = () => {
       await fetchLists();
       if (data) { setCurrentListId(data.id); setActiveView('list-detail'); }
       addNotification("Sucesso", "Nova lista iniciada.", "success");
-    } catch (err: any) { addNotification("Erro", "Falha ao criar lista.", "warning"); } finally { setIsCreatingList(false); }
+    } catch (err: any) { addNotification("Erro", getErrorMessage(err), "warning"); } finally { setIsCreatingList(false); }
   };
 
   const analytics = useMemo(() => {
@@ -456,9 +450,9 @@ const App: React.FC = () => {
                      <div className="flex flex-col lg:flex-row gap-8">
                         <div className="w-full lg:w-56 shrink-0 flex flex-col gap-3">
                            <div onClick={() => setZoomImage(entry.photos[activePhotos[entry.id] || 0])} className="w-full h-56 bg-slate-100 rounded-[30px] overflow-hidden relative border border-slate-200 cursor-zoom-in">
-                              <img src={entry.photos[activePhotos[entry.id] || 0]} className="w-full h-full object-cover" />
+                              <img src={entry.photos[activePhotos[entry.id] || 0]} className="w-full h-full object-cover" alt="Produto" />
                            </div>
-                           <div className="flex gap-2">{entry.photos.map((img, idx) => (<button key={idx} onClick={() => setActivePhotos({...activePhotos, [entry.id]: idx})} className={`flex-grow h-14 rounded-xl overflow-hidden border-2 transition-all ${(activePhotos[entry.id] || 0) === idx ? 'border-blue-500' : 'border-transparent opacity-60'}`}><img src={img} className="w-full h-full object-cover" /></button>))}</div>
+                           <div className="flex gap-2">{entry.photos.map((img, idx) => (<button key={idx} onClick={() => setActivePhotos({...activePhotos, [entry.id]: idx})} className={`flex-grow h-14 rounded-xl overflow-hidden border-2 transition-all ${(activePhotos[entry.id] || 0) === idx ? 'border-blue-500' : 'border-transparent opacity-60'}`}><img src={img} className="w-full h-full object-cover" alt={`Miniatura ${idx}`} /></button>))}</div>
                         </div>
                         <div className="flex-grow">
                            <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
@@ -660,7 +654,7 @@ const App: React.FC = () => {
       </footer>
 
       {isProcessing && (<div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[300] flex flex-col items-center justify-center text-white text-center p-6"><Loader2 className="w-20 h-20 text-blue-600 animate-spin mb-8" /><h3 className="text-2xl font-black uppercase italic tracking-tighter">Processando Inteligência PackScan</h3><p className="text-slate-400 text-[10px] font-bold uppercase mt-4 tracking-[0.2em] animate-pulse">Cruzando Dados com Base Master Global</p></div>)}
-      {zoomImage && (<div onClick={() => setZoomImage(null)} className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-zoom-out"><img src={zoomImage} className="max-w-full max-h-full rounded-2xl shadow-2xl animate-in zoom-in-95" /></div>)}
+      {zoomImage && (<div onClick={() => setZoomImage(null)} className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-zoom-out"><img src={zoomImage} className="max-w-full max-h-full rounded-2xl shadow-2xl animate-in zoom-in-95" alt="Zoom" /></div>)}
     </div>
   );
 };

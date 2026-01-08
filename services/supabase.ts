@@ -1,32 +1,43 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Função para capturar variáveis de ambiente de forma segura
-const getEnv = (key: string): string => {
-  if (typeof window !== 'undefined' && (window as any).process?.env?.[key]) {
-    return (window as any).process.env[key];
-  }
-  if (typeof process !== 'undefined' && process.env?.[key]) {
-    return process.env[key] as string;
-  }
-  return '';
-};
+/**
+ * Configuração do Supabase.
+ * Utilizamos os valores fornecidos diretamente no código como fallback para garantir
+ * que o cliente seja inicializado mesmo se as variáveis de ambiente do Vite falharem.
+ */
 
-const supabaseUrl = getEnv('SUPABASE_URL') || 'https://oocyvbexigpaqgucqcwc.supabase.co';
-const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY') || 'sb_publishable_UE3CY9AkCcnRTPNVyvPQaQ_2DNwzY_w';
+const DEFAULT_URL = 'https://mmqjtswnezofrklgaowy.supabase.co';
+const DEFAULT_KEY = 'sb_publishable_Vwp32EANk8gO3SplAvvEnw_zO4lZnsV';
 
-const createSafeClient = () => {
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith('http')) {
-    console.error("Supabase Error: Configurações ausentes ou URL inválida.", { url: supabaseUrl });
+// O Vite substitui process.env.* durante o build. Usamos fallbacks para segurança total.
+const supabaseUrl = process.env.SUPABASE_URL || DEFAULT_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || DEFAULT_KEY;
+
+const initSupabase = () => {
+  // Validação final das chaves para evitar erros silenciosos
+  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === '' || supabaseAnonKey === '') {
+    console.error("ERRO: Credenciais do Supabase não detectadas ou inválidas.");
     return null;
   }
-  
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  });
+
+  // Verifica se a URL é válida antes de tentar criar o cliente
+  if (!supabaseUrl.startsWith('http')) {
+    console.error("ERRO: URL do Supabase inválida:", supabaseUrl);
+    return null;
+  }
+
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+  } catch (err) {
+    console.error("Falha crítica ao criar cliente Supabase:", err);
+    return null;
+  }
 };
 
-export const supabase = createSafeClient();
+export const supabase = initSupabase();

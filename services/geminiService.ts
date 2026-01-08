@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  // Inicialização obrigatória conforme documentação atualizada
+  // Inicialização estritamente conforme as diretrizes: usar process.env.API_KEY diretamente.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
@@ -15,16 +15,16 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
 
     const imageParts = photos.map(prepareImagePart);
     const textPart = { 
-      text: "Extraia rigorosamente as 14 informações contidas nesta embalagem para a Lista de Prospecção Industrial. \n\nMANUTENÇÃO DE PADRÃO:\n1. MOLDAGEM: Analise se é 'TERMOFORMADO' (paredes finas) ou 'INJETADO' (rígido/pesado).\n2. FORMATO: Apenas 'REDONDO', 'RETANGULAR', 'QUADRADO' ou 'OVAL'.\n3. TIPO: 'BALDE', 'COPO' ou 'POTE'.\n4. FABRICANTE: Verifique o fundo da embalagem. Fabricantes conhecidos: FIBRASA, BOMIX, REAL PLASTIC, JAGUAR, IDM, AMCOR, RIOPLASTIC (RP), BARRIPACK, UP&IB, METAL G." 
+      text: "Atue como Auditor de Embalagens Industriais. Analise as imagens e extraia os 14 campos solicitados. IMPORTANTE: No fundo da embalagem, identifique o fabricante plástico (ex: FIBRASA, BOMIX, RIOPLASTIC). Se for impossível ler, use 'N/I'." 
     };
 
-    // Correctly using gemini-3-pro-preview for complex multimodal technical reasoning tasks.
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: { parts: [textPart, ...imageParts] },
+      contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um auditor de prospecção técnica. Gere um JSON com os 14 campos: razaoSocial, cnpj (array), marca, descricaoProduto, conteudo, endereco, cep, telefone, site, fabricanteEmbalagem, moldagem, formatoEmbalagem, tipoEmbalagem, modeloEmbalagem. Se não houver dado, use 'N/I'. No campo fabricanteEmbalagem, busque por logotipos ou nomes no fundo da peça plástica como FIBRASA, BOMIX, REAL PLASTIC, JAGUAR, IDM, AMCOR, RIOPLASTIC (RP), BARRIPACK, UP&IB ou METAL G.",
+        systemInstruction: "Você é um especialista em prospecção industrial. Extraia dados de embalagens plásticas. Gere um JSON com: razaoSocial, cnpj (array), marca, descricaoProduto, conteudo, endereco, cep, telefone, site, fabricanteEmbalagem, moldagem (TERMOFORMADO ou INJETADO), formatoEmbalagem (REDONDO, RETANGULAR, QUADRADO, OVAL), tipoEmbalagem (BALDE, COPO, POTE), modeloEmbalagem. Não use Markdown, retorne apenas o JSON puro.",
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 4000 },
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -49,29 +49,33 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     });
 
     const text = response.text;
-    if (!text) throw new Error("A IA retornou uma resposta vazia.");
+    if (!text) throw new Error("A IA não retornou conteúdo.");
     
-    const raw = JSON.parse(text);
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const raw = JSON.parse(cleanJson);
     
+    // Sanitização para garantir que todos os campos sejam strings, prevenindo [object Object] na UI
+    const toString = (val: any) => val === null || val === undefined ? "N/I" : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+
     return {
-      razaoSocial: raw.razaoSocial || "N/I",
-      cnpj: Array.isArray(raw.cnpj) ? raw.cnpj : [raw.cnpj].filter(Boolean),
-      marca: raw.marca || "N/I",
-      descricaoProduto: raw.descricaoProduto || "N/I",
-      conteudo: raw.conteudo || "N/I",
-      endereco: raw.endereco || "N/I",
-      cep: raw.cep || "N/I",
-      telefone: raw.telefone || "N/I",
-      site: raw.site || "N/I",
-      fabricanteEmbalagem: raw.fabricanteEmbalagem || "N/I",
-      moldagem: (raw.moldagem || "TERMOFORMADO").toUpperCase(),
-      formatoEmbalagem: (raw.formatoEmbalagem || "REDONDO").toUpperCase(),
-      tipoEmbalagem: (raw.tipoEmbalagem || "POTE").toUpperCase(),
-      modeloEmbalagem: raw.modeloEmbalagem || "N/I",
+      razaoSocial: toString(raw.razaoSocial),
+      cnpj: Array.isArray(raw.cnpj) ? raw.cnpj.map(c => toString(c)) : [toString(raw.cnpj)].filter(c => c !== "N/I"),
+      marca: toString(raw.marca),
+      descricaoProduto: toString(raw.descricaoProduto),
+      conteudo: toString(raw.conteudo),
+      endereco: toString(raw.endereco),
+      cep: toString(raw.cep),
+      telefone: toString(raw.telefone),
+      site: toString(raw.site),
+      fabricanteEmbalagem: toString(raw.fabricanteEmbalagem),
+      moldagem: toString(raw.moldagem || "TERMOFORMADO").toUpperCase(),
+      formatoEmbalagem: toString(raw.formatoEmbalagem || "REDONDO").toUpperCase(),
+      tipoEmbalagem: toString(raw.tipoEmbalagem || "POTE").toUpperCase(),
+      modeloEmbalagem: toString(raw.modeloEmbalagem),
       dataLeitura: new Date().toLocaleString('pt-BR')
     };
   } catch (error) {
-    console.error("Erro Gemini:", error);
-    throw new Error("Falha na extração de dados via IA. Verifique se a API_KEY está configurada no Vercel.");
+    console.error("Erro Gemini Service:", error);
+    throw error;
   }
 }
