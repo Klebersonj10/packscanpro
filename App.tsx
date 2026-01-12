@@ -19,7 +19,8 @@ const getErrorMessage = (err: any): string => {
   if (!err) return "Erro desconhecido";
   if (typeof err === 'string') return err;
   if (err.message && typeof err.message === 'string') return err.message;
-  return String(err);
+  if (err.error_description && typeof err.error_description === 'string') return err.error_description;
+  return JSON.stringify(err);
 };
 
 const getCnpjRaiz = (cnpj: string | string[]): string => {
@@ -261,28 +262,24 @@ const App: React.FC = () => {
         .eq('id', listId);
       
       if (error) throw error;
-      
       await fetchLists();
 
-      // Abrir aplicativo de e-mail com mensagem padrão
-      const subject = encodeURIComponent(`NOVA LEITURA PACKSCAN PRO: ${currentList.name}`);
-      const body = encodeURIComponent(
-        `Olá Inteligência Comercial,\n\n` +
-        `Uma nova lista de leitura de embalagens foi concluída e está pronta para análise.\n\n` +
-        `DADOS DA LISTA:\n` +
-        `NOME: ${currentList.name}\n` +
-        `ESTABELECIMENTO: ${currentList.establishment}\n` +
-        `CIDADE: ${currentList.city}\n` +
-        `INSPETOR: ${currentList.inspectorName}\n` +
-        `ITENS COLETADOS: ${currentList.entries?.length || 0}\n\n` +
-        `Por favor, realize a conferência na Base Master.\n\n` +
-        `Atenciosamente,\n` +
-        `Equipe PackScan Pro`
-      );
+      const recipient = globalConfig.ic_email || 'inteligencia.comercial@packscan.pro';
+      const subject = `NOVA LEITURA PACKSCAN PRO: ${currentList.name}`;
+      const body = `Olá Inteligência Comercial,\n\n` +
+                   `Uma nova lista de leitura de embalagens foi concluída e está pronta para análise.\n\n` +
+                   `DADOS DA LISTA:\n` +
+                   `NOME: ${currentList.name}\n` +
+                   `ESTABELECIMENTO: ${currentList.establishment}\n` +
+                   `CIDADE: ${currentList.city}\n` +
+                   `INSPETOR: ${currentList.inspectorName}\n` +
+                   `ITENS COLETADOS: ${currentList.entries?.length || 0}\n\n` +
+                   `Os dados atualizados já constam na Base Master.\n\n` +
+                   `Atenciosamente,\n` +
+                   `Equipe de Campo - PackScan Pro`;
       
-      window.location.href = `mailto:${globalConfig.ic_email}?subject=${subject}&body=${body}`;
-      
-      addNotification("Sucesso", `Lista marcada como enviada. Abrindo seu aplicativo de e-mail...`, "success");
+      window.location.href = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      addNotification("Sucesso", "Lista enviada para IC via e-mail.", "success");
     } catch (err: any) {
       addNotification("Erro no Envio", getErrorMessage(err), "warning");
     }
@@ -339,25 +336,34 @@ const App: React.FC = () => {
 
   const handleDeleteEntry = async (entryId: string) => {
     if (!supabase) return;
-    if (!window.confirm("Excluir item?")) return;
+    if (!window.confirm("Excluir item permanentemente?")) return;
     try {
       const { error } = await supabase.from('product_entries').delete().eq('id', entryId);
       if (error) throw error;
       await fetchLists();
       addNotification("Sucesso", "Item removido.", "success");
-    } catch (err: any) { addNotification("Erro", getErrorMessage(err), "warning"); }
+    } catch (err: any) { 
+      addNotification("Erro ao Deletar", getErrorMessage(err), "warning"); 
+    }
   };
 
   const handleDeleteList = async (listId: string) => {
     if (!supabase) return;
-    if (!window.confirm("Excluir lista completa?")) return;
+    if (!window.confirm("Excluir lista completa? Todos os itens associados serão removidos.")) return;
     try {
+      // 1. Limpa entradas vinculadas manualmente
+      await supabase.from('product_entries').delete().eq('list_id', listId);
+      // 2. Deleta a lista
       const { error } = await supabase.from('inspection_lists').delete().eq('id', listId);
       if (error) throw error;
+      
       setActiveView('home');
+      setCurrentListId(null);
       await fetchLists();
       addNotification("Sucesso", "Lista excluída.", "success");
-    } catch (err: any) { addNotification("Erro", getErrorMessage(err), "warning"); }
+    } catch (err: any) { 
+      addNotification("Erro ao Deletar", getErrorMessage(err), "warning"); 
+    }
   };
 
   const handleProcessImages = async (photos: string[]) => {
@@ -384,29 +390,55 @@ const App: React.FC = () => {
       if (error) throw error;
       await fetchLists();
       setActiveView('list-detail');
-      addNotification("Sucesso", "Extração via IA completa.", "success");
+      addNotification("Sucesso", "Extração completa.", "success");
     } catch (err: any) { 
       addNotification("Erro IA", getErrorMessage(err), "warning"); 
     } finally { setIsProcessing(false); }
   };
 
   const handleCreateList = async (formData: FormData) => {
-    if (!currentUser || !supabase) return;
+    if (!currentUser || !supabase) {
+        addNotification("Erro", "Sessão ou conexão não encontrada.", "warning");
+        return;
+    }
+    
+    const name = (formData.get('name') as string)?.trim()?.toUpperCase();
+    const establishment = (formData.get('establishment') as string)?.trim()?.toUpperCase();
+    const city = cityInput?.trim()?.toUpperCase();
+
+    if (!name || !establishment || !city) {
+        addNotification("Campos Obrigatórios", "Por favor, preencha todos os campos.", "info");
+        return;
+    }
+
     setIsCreatingList(true);
     try {
+      // Usando insert genérico para garantir compatibilidade com triggers e RLS do Supabase
       const { data, error } = await supabase.from('inspection_lists').insert([{ 
-        name: (formData.get('name') as string).toUpperCase(), 
-        establishment: (formData.get('establishment') as string).toUpperCase(), 
-        city: cityInput.toUpperCase(), 
+        name, 
+        establishment, 
+        city, 
         inspector_name: currentUser.name, 
         inspector_id: currentUser.id, 
         status: 'executing' 
-      }]).select().single();
+      }]).select('*');
+      
       if (error) throw error;
+      
       await fetchLists();
-      if (data) { setCurrentListId(data.id); setActiveView('list-detail'); }
-      addNotification("Sucesso", "Lista criada.", "success");
-    } catch (err: any) { addNotification("Erro", getErrorMessage(err), "warning"); } finally { setIsCreatingList(false); }
+      
+      const newList = data?.[0];
+      if (newList) { 
+        setCurrentListId(newList.id); 
+        setActiveView('list-detail'); 
+      }
+      addNotification("Sucesso", "Lista criada com sucesso.", "success");
+    } catch (err: any) { 
+      console.error("Erro ao criar lista:", err);
+      addNotification("Erro no Banco", getErrorMessage(err), "warning"); 
+    } finally { 
+      setIsCreatingList(false); 
+    }
   };
 
   const analytics = useMemo(() => {
@@ -487,15 +519,29 @@ const App: React.FC = () => {
 
         {activeView === 'list-detail' && currentList && (
           <div className="space-y-6 animate-in fade-in pb-10">
-             <div className="bg-white p-6 md:p-10 rounded-[50px] border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm">
-                <div className="flex items-center gap-4 w-full md:w-auto"><button onClick={() => setActiveView('home')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-colors"><ArrowLeft className="w-5 h-5" /></button><div><h2 className="text-3xl font-black uppercase italic tracking-tighter leading-tight">{currentList.name}</h2><p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest flex items-center gap-2"><MapPin className="w-3 h-3 text-blue-600" /> {currentList.establishment} • {currentList.city}</p></div></div>
+             <div className="bg-white p-6 md:p-10 rounded-[50px] border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-4 w-full md:w-auto overflow-hidden">
+                   <button onClick={() => setActiveView('home')} className="shrink-0 p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+                   <div className="min-w-0">
+                      <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-tight truncate">{currentList.name}</h2>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest flex items-center gap-2 truncate">
+                         <MapPin className="w-3 h-3 text-blue-600 shrink-0" /> {currentList.establishment} • {currentList.city}
+                      </p>
+                   </div>
+                </div>
                 <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto">
-                   <button onClick={() => handleDeleteList(currentList.id)} className="shrink-0 bg-rose-50 text-rose-500 px-4 py-4 rounded-2xl font-black text-[10px] uppercase border border-rose-100"><Trash2 className="w-4 h-4" /></button>
-                   <button onClick={() => handleSendToIntelligence(currentList.id)} className={`shrink-0 px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl transition-all ${currentList.status === 'waiting_ic' ? 'bg-amber-100 text-amber-600 shadow-amber-50' : 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'}`}>
-                     <Send className="w-4 h-4" /> Enviar IC
+                   <button onClick={() => handleDeleteList(currentList.id)} className="shrink-0 bg-rose-50 text-rose-500 p-4 rounded-2xl font-black uppercase border border-rose-100 hover:bg-rose-100 transition-colors" title="Excluir Lista">
+                     <Trash2 className="w-5 h-5" />
                    </button>
-                   <button onClick={() => setActiveView('upload')} className="shrink-0 bg-slate-900 text-white px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2"><Upload className="w-4 h-4" /> Upload</button>
-                   <button onClick={() => setActiveView('scanner')} className="shrink-0 bg-blue-600 text-white px-5 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl"><Camera className="w-4 h-4" /> Escanear</button>
+                   <button onClick={() => handleSendToIntelligence(currentList.id)} className={`shrink-0 px-3 md:px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl transition-all ${currentList.status === 'waiting_ic' ? 'bg-amber-100 text-amber-600 shadow-amber-50' : 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'}`}>
+                     <Send className="w-4 h-4 shrink-0" /> ENVIAR IC
+                   </button>
+                   <button onClick={() => setActiveView('upload')} className="shrink-0 bg-slate-900 text-white px-3 md:px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-slate-800 transition-colors">
+                     <Upload className="w-4 h-4 shrink-0" /> UPLOAD
+                   </button>
+                   <button onClick={() => setActiveView('scanner')} className="shrink-0 bg-blue-600 text-white px-4 md:px-6 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl hover:bg-blue-700 transition-colors">
+                     <Camera className="w-4 h-4 shrink-0" /> ESCANEAR
+                   </button>
                 </div>
              </div>
              <div className="grid gap-8">
@@ -514,26 +560,28 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex-grow">
                            <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
-                              <div className="flex-grow pr-4">
+                              <div className="flex-grow pr-4 overflow-hidden">
                                 {editingEntryId === entry.id ? (
                                   <div className="space-y-3">
                                     <input className="font-black text-xl uppercase italic text-slate-900 bg-slate-50 border p-3 rounded-xl w-full" value={editFormData?.razaoSocial} onChange={e => setEditFormData(prev => prev ? {...prev, razaoSocial: e.target.value} : null)} placeholder="RAZÃO SOCIAL" />
                                     <input className="text-[10px] font-black text-slate-500 bg-slate-50 border p-2 rounded-lg w-full" value={editFormData?.cnpj[0] || ''} onChange={e => setEditFormData(prev => prev ? {...prev, cnpj: [e.target.value]} : null)} placeholder="CNPJ" />
                                   </div>
                                 ) : (
-                                  <>
-                                    <h4 className="font-black text-xl uppercase italic leading-none text-slate-900">{entry.data.razaoSocial}</h4>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase mt-2 italic tracking-widest">CNPJ: {entry.data.cnpj[0] || 'N/I'}</p>
-                                  </>
+                                  <div className="min-w-0">
+                                    <h4 className="font-black text-xl uppercase italic leading-none text-slate-900 truncate">{entry.data.razaoSocial}</h4>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase mt-2 italic tracking-widest truncate">CNPJ: {entry.data.cnpj[0] || 'N/I'}</p>
+                                  </div>
                                 )}
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 shrink-0">
                                 {editingEntryId === entry.id ? (
                                   <button onClick={() => handleUpdateEntry(entry.id)} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg"><Save className="w-5 h-5" /></button>
                                 ) : (
                                   <button onClick={() => { setEditingEntryId(entry.id); setEditFormData({...entry.data}); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl hover:text-blue-600 transition-colors"><Edit3 className="w-5 h-5" /></button>
                                 )}
-                                <button onClick={() => handleDeleteEntry(entry.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
+                                <button onClick={() => handleDeleteEntry(entry.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors" title="Remover Item">
+                                   <Trash2 className="w-5 h-5" />
+                                </button>
                               </div>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -622,7 +670,7 @@ const App: React.FC = () => {
                   <ThumbsUp className="w-10 h-10 text-emerald-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Aprovados IC</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Aprovados IC</p>
                   <p className="text-5xl font-black text-emerald-600 leading-none">{analytics.approvedCount}</p>
                 </div>
               </div>
@@ -632,7 +680,7 @@ const App: React.FC = () => {
                   <ThumbsDown className="w-10 h-10 text-rose-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Reprovados IC</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Reprovados IC</p>
                   <p className="text-5xl font-black text-rose-500 leading-none">{analytics.rejectedCount}</p>
                 </div>
               </div>
@@ -642,7 +690,7 @@ const App: React.FC = () => {
                   <Clock className="w-10 h-10 text-amber-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Pendentes Analise</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Pendentes Analise</p>
                   <p className="text-5xl font-black text-amber-600 leading-none">{analytics.pendingCount}</p>
                 </div>
               </div>
@@ -842,7 +890,9 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <button type="submit" className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl active:scale-90 hover:bg-blue-700 transition-all mt-4">Criar Lista</button>
+                <button type="submit" disabled={isCreatingList} className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl active:scale-90 hover:bg-blue-700 transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isCreatingList ? 'Criando...' : 'Criar Lista'}
+                </button>
               </form>
             </div>
           </div>
