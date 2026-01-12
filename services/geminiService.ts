@@ -2,7 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  // Inicialização usando a API KEY do ambiente conforme diretrizes
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
@@ -15,14 +14,26 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
 
     const imageParts = photos.map(prepareImagePart);
     const textPart = { 
-      text: "Analise estas fotos de uma embalagem industrial. Extraia: Razão Social, CNPJ (todos os encontrados), Marca, Descrição do Produto, Conteúdo Líquido, Endereço Completo, CEP, Telefone, Site, Fabricante da Embalagem Plástica (veja no relevo do fundo), Moldagem (Injetado ou Termoformado), Formato, Tipo e Modelo." 
+      text: `Analise estas fotos de uma embalagem industrial. 
+      Extraia os seguintes dados:
+      - Razão Social (Fabricante do produto final)
+      - CNPJ (Todos os encontrados)
+      - Marca do produto
+      - Descrição do Produto
+      - Conteúdo Líquido (Ex: 500g, 1kg)
+      - Endereço Completo, CEP, Telefone e Site
+      - Fabricante da Embalagem Plástica (Verificar no relevo do fundo da peça)
+      - Moldagem: Deve ser apenas 'INJETADO' ou 'TERMOFORMADO'
+      - Formato: Deve ser apenas 'REDONDO', 'QUADRADO', 'RETANGULAR' ou 'OVAL'. JAMAIS utilize o termo 'CILÍNDRICO'.
+      - Tipo de Embalagem (Ex: POTE, TAMPA, BALDE)
+      - Modelo da Embalagem (Ex: P500, B10)` 
     };
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um especialista em OCR para embalagens industriais. Retorne estritamente um JSON válido. Use 'N/I' para campos não encontrados.",
+        systemInstruction: "Você é um especialista em OCR industrial. Retorne estritamente um JSON. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Não use 'CILÍNDRICO'. Use 'N/I' para dados ausentes.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -51,8 +62,13 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     if (!jsonText) throw new Error("A IA não retornou dados válidos.");
     
     const raw = JSON.parse(jsonText.trim());
-    
     const sanitize = (val: any) => (val === null || val === undefined || val === "" || val === "N/I") ? "N/I" : String(val);
+
+    // Validação forçada de Formato para evitar "Cilindrico"
+    let formato = sanitize(raw.formatoEmbalagem).toUpperCase();
+    if (formato.includes("CILIN") || formato.includes("CILÍN")) {
+      formato = "REDONDO";
+    }
 
     return {
       razaoSocial: sanitize(raw.razaoSocial).toUpperCase(),
@@ -66,13 +82,13 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       site: sanitize(raw.site).toLowerCase(),
       fabricanteEmbalagem: sanitize(raw.fabricanteEmbalagem).toUpperCase(),
       moldagem: sanitize(raw.moldagem || "TERMOFORMADO").toUpperCase(),
-      formatoEmbalagem: sanitize(raw.formatoEmbalagem || "REDONDO").toUpperCase(),
+      formatoEmbalagem: formato,
       tipoEmbalagem: sanitize(raw.tipoEmbalagem || "POTE").toUpperCase(),
       modeloEmbalagem: sanitize(raw.modeloEmbalagem).toUpperCase(),
       dataLeitura: new Date().toLocaleString('pt-BR')
     };
   } catch (error) {
     console.error("Erro no Gemini Service:", error);
-    throw new Error("Não foi possível processar a imagem. Verifique a iluminação e tente novamente.");
+    throw new Error("Falha na extração de dados. Tente novamente com fotos mais nítidas.");
   }
 }

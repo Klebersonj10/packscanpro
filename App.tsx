@@ -268,6 +268,18 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSetReviewStatus = async (entryId: string, status: 'approved' | 'rejected') => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from('product_entries').update({ review_status: status }).eq('id', entryId);
+      if (error) throw error;
+      await fetchLists();
+      addNotification("Sucesso", `Item ${status === 'approved' ? 'aprovado' : 'reprovado'} para o BI.`, "success");
+    } catch (err: any) {
+      addNotification("Erro", getErrorMessage(err), "warning");
+    }
+  };
+
   const handleDeleteEntry = async (entryId: string) => {
     if (!supabase) return;
     if (!window.confirm("Excluir item?")) return;
@@ -440,7 +452,10 @@ const App: React.FC = () => {
                            <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
                               <div className="flex-grow pr-4">
                                 {editingEntryId === entry.id ? (
-                                  <input className="font-black text-xl uppercase italic text-slate-900 bg-slate-50 border p-2 rounded-xl w-full" value={editFormData?.razaoSocial} onChange={e => setEditFormData(prev => prev ? {...prev, razaoSocial: e.target.value} : null)} />
+                                  <div className="space-y-3">
+                                    <input className="font-black text-xl uppercase italic text-slate-900 bg-slate-50 border p-3 rounded-xl w-full" value={editFormData?.razaoSocial} onChange={e => setEditFormData(prev => prev ? {...prev, razaoSocial: e.target.value} : null)} placeholder="RAZÃO SOCIAL" />
+                                    <input className="text-[10px] font-black text-slate-500 bg-slate-50 border p-2 rounded-lg w-full" value={editFormData?.cnpj[0] || ''} onChange={e => setEditFormData(prev => prev ? {...prev, cnpj: [e.target.value]} : null)} placeholder="CNPJ" />
+                                  </div>
                                 ) : (
                                   <>
                                     <h4 className="font-black text-xl uppercase italic leading-none text-slate-900">{entry.data.razaoSocial}</h4>
@@ -450,38 +465,76 @@ const App: React.FC = () => {
                               </div>
                               <div className="flex gap-2">
                                 {editingEntryId === entry.id ? (
-                                  <button onClick={() => handleUpdateEntry(entry.id)} className="bg-blue-600 text-white p-3 rounded-xl"><Save className="w-5 h-5" /></button>
+                                  <button onClick={() => handleUpdateEntry(entry.id)} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg"><Save className="w-5 h-5" /></button>
                                 ) : (
-                                  <button onClick={() => { setEditingEntryId(entry.id); setEditFormData({...entry.data}); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl"><Edit3 className="w-5 h-5" /></button>
+                                  <button onClick={() => { setEditingEntryId(entry.id); setEditFormData({...entry.data}); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl hover:text-blue-600 transition-colors"><Edit3 className="w-5 h-5" /></button>
                                 )}
-                                <button onClick={() => handleDeleteEntry(entry.id)} className="p-3 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
+                                <button onClick={() => handleDeleteEntry(entry.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
                               </div>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               <div className="bg-blue-50/30 p-5 rounded-[30px] border border-blue-100/50">
                                 <h5 className="text-[9px] font-black text-blue-600 uppercase italic border-b pb-2 flex items-center gap-2"><Tag className="w-3 h-3" /> Identificação</h5>
-                                <div className="mt-4 space-y-2">
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase">Marca</p><p className="text-[10px] font-black uppercase text-slate-800">{entry.data.marca}</p>
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase">Descrição</p><p className="text-[10px] font-black uppercase text-slate-800">{entry.data.descricaoProduto}</p>
+                                <div className="mt-4 space-y-3">
+                                  <div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Marca</p>
+                                    {editingEntryId === entry.id ? <input className="w-full text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.marca} onChange={e => setEditFormData(prev => prev ? {...prev, marca: e.target.value} : null)} /> : <p className="text-[10px] font-black uppercase text-slate-800">{entry.data.marca}</p>}
+                                  </div>
+                                  <div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Descrição</p>
+                                    {editingEntryId === entry.id ? <textarea className="w-full text-[10px] font-black p-2 bg-white border rounded-lg h-20" value={editFormData?.descricaoProduto} onChange={e => setEditFormData(prev => prev ? {...prev, descricaoProduto: e.target.value} : null)} /> : <p className="text-[10px] font-black uppercase text-slate-800">{entry.data.descricaoProduto}</p>}
+                                  </div>
                                 </div>
                               </div>
                               <div className="bg-slate-50 p-5 rounded-[30px] border border-slate-200/50">
                                 <h5 className="text-[9px] font-black text-slate-500 uppercase italic border-b pb-2 flex items-center gap-2"><MapPin className="w-3 h-3" /> Localização</h5>
-                                <div className="mt-4 space-y-2">
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase">Endereço</p><p className="text-[10px] font-black uppercase text-slate-800 truncate">{entry.data.endereco}</p>
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase">CEP</p><p className="text-[10px] font-black uppercase text-slate-800">{entry.data.cep}</p>
+                                <div className="mt-4 space-y-3">
+                                  <div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Endereço</p>
+                                    {editingEntryId === entry.id ? <input className="w-full text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.endereco} onChange={e => setEditFormData(prev => prev ? {...prev, endereco: e.target.value} : null)} /> : <p className="text-[10px] font-black uppercase text-slate-800 truncate">{entry.data.endereco}</p>}
+                                  </div>
+                                  <div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">CEP / Tel</p>
+                                    {editingEntryId === entry.id ? <div className="grid grid-cols-2 gap-2"><input className="text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.cep} onChange={e => setEditFormData(prev => prev ? {...prev, cep: e.target.value} : null)} /><input className="text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.telefone} onChange={e => setEditFormData(prev => prev ? {...prev, telefone: e.target.value} : null)} /></div> : <p className="text-[10px] font-black uppercase text-slate-800">{entry.data.cep} • {entry.data.telefone}</p>}
+                                  </div>
                                 </div>
                               </div>
                               <div className="bg-emerald-50/30 p-5 rounded-[30px] border border-emerald-100/50">
                                 <h5 className="text-[9px] font-black text-emerald-600 uppercase italic border-b pb-2 flex items-center gap-2"><Box className="w-3 h-3" /> Embalagem</h5>
-                                <div className="mt-4 space-y-2">
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase">Fabricante Peça</p><p className="text-[10px] font-black uppercase text-slate-800 truncate">{entry.data.fabricanteEmbalagem}</p>
+                                <div className="mt-4 space-y-3">
+                                  <div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Fabricante Peça</p>
+                                    {editingEntryId === entry.id ? <input className="w-full text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.fabricanteEmbalagem} onChange={e => setEditFormData(prev => prev ? {...prev, fabricanteEmbalagem: e.target.value} : null)} /> : <p className="text-[10px] font-black uppercase text-slate-800 truncate">{entry.data.fabricanteEmbalagem}</p>}
+                                  </div>
                                   <div className="grid grid-cols-2 gap-2">
-                                    <div><p className="text-[8px] font-bold text-slate-400 uppercase">Moldagem</p><p className="text-[10px] font-black text-emerald-600 uppercase">{entry.data.moldagem}</p></div>
-                                    <div><p className="text-[8px] font-bold text-slate-400 uppercase">Formato</p><p className="text-[10px] font-black text-slate-800 uppercase">{entry.data.formatoEmbalagem}</p></div>
+                                    <div>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Moldagem</p>
+                                      {editingEntryId === entry.id ? <select className="w-full text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.moldagem} onChange={e => setEditFormData(prev => prev ? {...prev, moldagem: e.target.value} : null)}><option value="INJETADO">INJETADO</option><option value="TERMOFORMADO">TERMOFORMADO</option></select> : <p className="text-[10px] font-black text-emerald-600 uppercase">{entry.data.moldagem}</p>}
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Formato</p>
+                                      {editingEntryId === entry.id ? <select className="w-full text-[10px] font-black p-2 bg-white border rounded-lg" value={editFormData?.formatoEmbalagem} onChange={e => setEditFormData(prev => prev ? {...prev, formatoEmbalagem: e.target.value} : null)}><option value="REDONDO">REDONDO</option><option value="QUADRADO">QUADRADO</option><option value="RETANGULAR">RETANGULAR</option><option value="OVAL">OVAL</option></select> : <p className="text-[10px] font-black text-slate-800 uppercase">{entry.data.formatoEmbalagem}</p>}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+                           </div>
+                           
+                           {/* Review Section - Buttons for BI feed */}
+                           <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+                             <div className="flex items-center gap-2">
+                               <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase italic tracking-widest ${entry.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-600' : entry.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
+                                 Status BI: {entry.reviewStatus === 'pending' ? 'Pendente Analise' : entry.reviewStatus === 'approved' ? 'Aprovado IC' : 'Reprovado IC'}
+                               </span>
+                             </div>
+                             <div className="flex gap-3">
+                               <button onClick={() => handleSetReviewStatus(entry.id, 'rejected')} className={`p-4 rounded-2xl flex items-center gap-2 transition-all ${entry.reviewStatus === 'rejected' ? 'bg-rose-600 text-white shadow-lg' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}>
+                                 <ThumbsDown className="w-5 h-5" />
+                               </button>
+                               <button onClick={() => handleSetReviewStatus(entry.id, 'approved')} className={`p-4 rounded-2xl flex items-center gap-2 transition-all ${entry.reviewStatus === 'approved' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-emerald-50 text-emerald-500 hover:bg-emerald-100'}`}>
+                                 <ThumbsUp className="w-5 h-5" />
+                               </button>
+                             </div>
                            </div>
                         </div>
                      </div>
@@ -500,7 +553,7 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900">Ranking BI Comercial</h2>
             </div>
             
-            {/* Stats Cards - Updated to match screenshot */}
+            {/* Stats Cards - Matches screenshot */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-10 rounded-[45px] border border-slate-50 shadow-sm flex items-center gap-8">
                 <div className="w-20 h-20 bg-emerald-50 rounded-[28px] flex items-center justify-center">
@@ -533,7 +586,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Rankings - Updated to match screenshot */}
+            {/* Rankings - Matches screenshot */}
             <div className="space-y-6">
               <div className="bg-white p-12 rounded-[50px] border border-slate-50 shadow-sm space-y-8">
                 <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-4 italic leading-none">
@@ -563,7 +616,7 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Progress Bars Sections - Updated to match screenshot */}
+              {/* Progress Bars Sections - Matches screenshot */}
               <div className="bg-white p-12 rounded-[50px] border border-slate-50 shadow-sm space-y-10">
                 <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-4 italic leading-none">
                   <Database className="w-6 h-6 text-amber-500" /> Share de Fabricantes
