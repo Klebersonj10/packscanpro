@@ -29,6 +29,13 @@ const getCnpjRaiz = (cnpj: string | string[]): string => {
   return clean.substring(0, 8);
 };
 
+const FALLBACK_CITIES = [
+  "SÃO PAULO / SP", "RIO DE JANEIRO / RJ", "BRASÍLIA / DF", "SALVADOR / BA", "FORTALEZA / CE",
+  "BELO HORIZONTE / MG", "MANAUS / AM", "CURITIBA / PR", "RECIFE / PE", "GOIÂNIA / GO",
+  "BELÉM / PA", "PORTO ALEGRE / RS", "GUARULHOS / SP", "CAMPINAS / SP", "SÃO LUÍS / MA",
+  "SÃO GONÇALO / RJ", "MACEIÓ / AL", "DUQUE DE CAXIAS / RJ", "NATAL / RN", "TERESINA / PI"
+];
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoginView, setIsLoginView] = useState(true);
@@ -47,7 +54,6 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activePhotos, setActivePhotos] = useState<Record<string, number>>({});
 
-  // Cidade/UF Suggestions
   const [cityInput, setCityInput] = useState('');
   const [allCities, setAllCities] = useState<string[]>([]);
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
@@ -78,6 +84,7 @@ const App: React.FC = () => {
     const fetchIBGECities = async () => {
       try {
         const response = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome');
+        if (!response.ok) throw new Error("Erro na rede IBGE");
         const data = await response.json();
         const formatted = data.map((item: any) => {
           const nome = item.nome?.toUpperCase() || 'N/I';
@@ -86,7 +93,8 @@ const App: React.FC = () => {
         });
         setAllCities(formatted);
       } catch (err) {
-        console.error("Erro ao carregar municípios:", err);
+        console.error("Erro ao carregar municípios, usando fallback:", err);
+        setAllCities(FALLBACK_CITIES);
       }
     };
     fetchIBGECities();
@@ -160,10 +168,15 @@ const App: React.FC = () => {
   const fetchLists = async () => {
     if (!supabase || !currentUser) return;
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('inspection_lists')
-        .select('*, product_entries(*)')
-        .order('created_at', { ascending: false });
+        .select('*, product_entries(*)');
+        
+      if (currentUser.role !== 'admin') {
+        query = query.eq('inspector_id', currentUser.id);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
         
       if (error) throw error;
       
@@ -239,9 +252,32 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSendToIntelligence = async (listId: string) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('inspection_lists')
+        .update({ status: 'waiting_ic' })
+        .eq('id', listId);
+      
+      if (error) throw error;
+      
+      await fetchLists();
+      addNotification("Sucesso", `Lista enviada. E-mail de notificação encaminhado para: ${globalConfig.ic_email}`, "success");
+    } catch (err: any) {
+      addNotification("Erro no Envio", getErrorMessage(err), "warning");
+    }
+  };
+
   const handleUpdateEntry = async (entryId: string) => {
     if (!editFormData || !supabase) return;
     try {
+      const raiz = getCnpjRaiz(editFormData.cnpj);
+      const isNew = !cleanRefCnpjs.some(ref => {
+        const firstCnpj = (editFormData.cnpj[0] || '').replace(/\D/g, '');
+        return firstCnpj.includes(ref) || ref.includes(firstCnpj);
+      });
+
       const { error } = await supabase.from('product_entries').update({
         razao_social: editFormData.razaoSocial,
         marca: editFormData.marca,
@@ -256,7 +292,9 @@ const App: React.FC = () => {
         telefone: editFormData.telefone,
         site: editFormData.site,
         cep: editFormData.cep,
-        cnpj: editFormData.cnpj
+        cnpj: editFormData.cnpj,
+        cnpj_raiz: raiz,
+        is_new_prospect: isNew
       }).eq('id', entryId);
       
       if (error) throw error;
@@ -311,7 +349,7 @@ const App: React.FC = () => {
       const raiz = getCnpjRaiz(extracted.cnpj);
       
       const isNew = !cleanRefCnpjs.some(ref => {
-        const firstCnpj = extracted.cnpj[0]?.replace(/\D/g, '') || '';
+        const firstCnpj = (extracted.cnpj[0] || '').replace(/\D/g, '');
         return firstCnpj.includes(ref) || ref.includes(firstCnpj);
       });
       
@@ -416,11 +454,11 @@ const App: React.FC = () => {
       <main className="max-w-5xl mx-auto p-6">
         {activeView === 'home' && (
           <div className="space-y-8 animate-in fade-in">
-            <div className="flex justify-between items-center pt-4"><h2 className="text-xl font-black uppercase italic tracking-tighter">Minhas Listas</h2><button onClick={() => { setCityInput(''); setActiveView('create-list'); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100 transition-all active:scale-95">+ Nova Lista</button></div>
+            <div className="flex justify-between items-center pt-4"><h2 className="text-xl font-black uppercase italic tracking-tighter">{currentUser.role === 'admin' ? 'Todas as Listas (Admin)' : 'Minhas Listas'}</h2><button onClick={() => { setCityInput(''); setActiveView('create-list'); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100 transition-all active:scale-95">+ Nova Lista</button></div>
             <div className="grid gap-4">
               {lists.map(list => (
                 <div key={list.id} className="bg-white p-6 rounded-[35px] border border-slate-200 flex items-center justify-between hover:shadow-xl group transition-all" onClick={() => { setCurrentListId(list.id); setActiveView('list-detail'); }}>
-                   <div className="flex items-center gap-5 flex-grow cursor-pointer"><div className="w-14 h-14 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner"><LayoutList /></div><div><h3 className="font-black text-lg uppercase italic leading-none">{list.name}</h3><p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest"><MapPin className="w-3 h-3 inline" /> {list.establishment} • {list.city}</p></div></div>
+                   <div className="flex items-center gap-5 flex-grow cursor-pointer"><div className="w-14 h-14 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner"><LayoutList /></div><div><h3 className="font-black text-lg uppercase italic leading-none">{list.name}</h3><p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest"><MapPin className="w-3 h-3 inline" /> {list.establishment} • {list.city} {currentUser.role === 'admin' && `• Por: ${list.inspectorName}`}</p></div></div>
                    <div className="flex items-center gap-3"><button onClick={(e) => { e.stopPropagation(); handleDeleteList(list.id); }} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 className="w-5 h-5" /></button><ChevronRight className="w-6 h-6 text-slate-200 group-hover:text-blue-600 transition-colors" /></div>
                 </div>
               ))}
@@ -434,14 +472,21 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-4"><button onClick={() => setActiveView('home')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-colors"><ArrowLeft className="w-5 h-5" /></button><div><h2 className="text-3xl font-black uppercase italic tracking-tighter leading-tight">{currentList.name}</h2><p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest flex items-center gap-2"><MapPin className="w-3 h-3 text-blue-600" /> {currentList.establishment} • {currentList.city}</p></div></div>
                 <div className="flex gap-3">
                    <button onClick={() => handleDeleteList(currentList.id)} className="bg-rose-50 text-rose-500 px-6 py-4 rounded-2xl font-black text-[10px] uppercase border border-rose-100"><Trash2 className="w-4 h-4" /></button>
+                   <button onClick={() => handleSendToIntelligence(currentList.id)} className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl transition-all ${currentList.status === 'waiting_ic' ? 'bg-amber-100 text-amber-600 shadow-amber-50' : 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'}`}>
+                     <Send className="w-4 h-4" /> {currentList.status === 'waiting_ic' ? 'Enviado para IC' : 'Enviar para IC'}
+                   </button>
                    <button onClick={() => setActiveView('upload')} className="bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2"><Upload className="w-4 h-4" /> Upload</button>
                    <button onClick={() => setActiveView('scanner')} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl"><Camera className="w-4 h-4" /> Escanear</button>
                 </div>
              </div>
              <div className="grid gap-8">
                 {currentList.entries.map(entry => (
-                  <div key={entry.id} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm group hover:shadow-xl transition-all">
-                     <div className="flex flex-col lg:flex-row gap-8">
+                  <div key={entry.id} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden">
+                     <div className={`absolute top-0 right-10 px-6 py-2 rounded-b-2xl text-[10px] font-black uppercase italic tracking-widest shadow-sm ${entry.isNewProspect ? 'bg-amber-400 text-white' : 'bg-blue-600 text-white'}`}>
+                       {entry.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado na Base'}
+                     </div>
+
+                     <div className="flex flex-col lg:flex-row gap-8 mt-4">
                         <div className="w-full lg:w-56 shrink-0 flex flex-col gap-3">
                            <div onClick={() => setZoomImage(entry.photos[activePhotos[entry.id] || 0])} className="w-full h-56 bg-slate-100 rounded-[30px] overflow-hidden relative border border-slate-200 cursor-zoom-in">
                               <img src={entry.photos[activePhotos[entry.id] || 0]} className="w-full h-full object-cover" alt="Produto" />
@@ -520,7 +565,6 @@ const App: React.FC = () => {
                               </div>
                            </div>
                            
-                           {/* Review Section - Buttons for BI feed */}
                            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
                              <div className="flex items-center gap-2">
                                <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase italic tracking-widest ${entry.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-600' : entry.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
@@ -553,7 +597,6 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900">Ranking BI Comercial</h2>
             </div>
             
-            {/* Stats Cards - Matches screenshot */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-10 rounded-[45px] border border-slate-50 shadow-sm flex items-center gap-8">
                 <div className="w-20 h-20 bg-emerald-50 rounded-[28px] flex items-center justify-center">
@@ -586,7 +629,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Rankings - Matches screenshot */}
             <div className="space-y-6">
               <div className="bg-white p-12 rounded-[50px] border border-slate-50 shadow-sm space-y-8">
                 <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-4 italic leading-none">
@@ -616,7 +658,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Progress Bars Sections - Matches screenshot */}
               <div className="bg-white p-12 rounded-[50px] border border-slate-50 shadow-sm space-y-10">
                 <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-4 italic leading-none">
                   <Database className="w-6 h-6 text-amber-500" /> Share de Fabricantes
@@ -669,12 +710,70 @@ const App: React.FC = () => {
             <div className="flex justify-between items-center pt-4">
               <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900">Database Master</h2>
               <button onClick={() => { 
-                const data = lists.flatMap(l => (l.entries || []).map(e => ({ DATA: e.checkedAt, INSPETOR: l.inspectorName, PDV: l.establishment, CIDADE: l.city, RAZAO_SOCIAL: e.data.razaoSocial, CNPJ: e.data.cnpj[0], MARCA: e.data.marca, DESCRICAO: e.data.descricaoProduto, FABRICANTE: e.data.fabricanteEmbalagem, MOLDAGEM: e.data.moldagem, STATUS: e.reviewStatus })));
-                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Master"); XLSX.writeFile(wb, `PackScan_Master_${new Date().toISOString().split('T')[0]}.xlsx`); 
-              }} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2"><FileSpreadsheet className="w-5 h-5" /> Exportar XLSX</button>
+                const data = lists.flatMap(l => (l.entries || []).map(e => ({ 
+                  DATA_LEITURA: e.checkedAt, 
+                  INSPETOR: l.inspectorName, 
+                  PDV: l.establishment, 
+                  CIDADE: l.city, 
+                  ESTADO_UF: l.city.split('/').pop()?.trim() || 'N/I',
+                  RAZAO_SOCIAL: e.data.razaoSocial, 
+                  MARCA: e.data.marca, 
+                  DESCRICAO: e.data.descricaoProduto, 
+                  CONTEUDO: e.data.conteudo,
+                  CNPJ: e.data.cnpj[0], 
+                  STATUS_BASE: e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado',
+                  FABRICANTE_EMBALAGEM: e.data.fabricanteEmbalagem, 
+                  MOLDAGEM: e.data.moldagem, 
+                  FORMATO: e.data.formatoEmbalagem,
+                  TIPO_EMBALAGEM: e.data.tipoEmbalagem,
+                  MODELO_EMBALAGEM: e.data.modeloEmbalagem,
+                  ENDERECO: e.data.endereco,
+                  CEP: e.data.cep,
+                  TELEFONE: e.data.telefone,
+                  SITE: e.data.site,
+                  STATUS_IC: e.reviewStatus 
+                })));
+                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Master"); XLSX.writeFile(wb, `PackScan_Master_21_Cols_${new Date().toISOString().split('T')[0]}.xlsx`); 
+              }} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2"><FileSpreadsheet className="w-5 h-5" /> Exportar 21 Colunas XLSX</button>
             </div>
             <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto"><table className="w-full text-left text-[11px] whitespace-nowrap"><thead className="bg-slate-900 text-white uppercase italic"><tr>{["Data", "Inspetor", "PDV", "Cidade", "Razão Social", "Fabricante", "Status"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}</tr></thead><tbody>{lists.flatMap(listRow => (listRow.entries || []).map(e => ({ ...e, _list: listRow }))).map((e, i) => (<tr key={i} className="border-b border-slate-50 hover:bg-blue-50/50"><td className="px-6 py-4 text-slate-400 font-bold">{e.checkedAt.split(' ')[0]}</td><td className="px-6 py-4 font-bold text-slate-600">{e._list.inspectorName}</td><td className="px-6 py-4 font-bold text-slate-600">{e._list.establishment}</td><td className="px-6 py-4 font-bold text-slate-600">{e._list.city}</td><td className="px-6 py-4 font-black text-slate-900 italic uppercase">{e.data.razaoSocial}</td><td className="px-6 py-4 font-black text-blue-800">{e.data.fabricanteEmbalagem}</td><td className="px-6 py-4"><span className={`px-4 py-1 rounded-full font-black text-[8px] uppercase ${e.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'}`}>{e.reviewStatus}</span></td></tr>))}</tbody></table></div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px] whitespace-nowrap">
+                  <thead className="bg-slate-900 text-white uppercase italic">
+                    <tr>
+                      {["Data", "PDV", "Cidade", "Razão Social", "CNPJ", "Base", "Fabricante Peça", "Moldagem", "Formato", "Marca", "Descrição", "Tipo", "Modelo", "Status IC"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lists.flatMap(listRow => (listRow.entries || []).map(e => ({ ...e, _list: listRow }))).map((e, i) => (
+                      <tr key={i} className="border-b border-slate-50 hover:bg-blue-50/50">
+                        <td className="px-6 py-4 text-slate-400 font-bold">{e.checkedAt.split(' ')[0]}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e._list.establishment}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e._list.city}</td>
+                        <td className="px-6 py-4 font-black text-slate-900 italic uppercase">{e.data.razaoSocial}</td>
+                        <td className="px-6 py-4 font-bold text-slate-500">{e.data.cnpj[0]}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full font-black text-[8px] uppercase ${e.isNewProspect ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {e.isNewProspect ? 'Novo' : 'Cadastrado'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-black text-blue-800">{e.data.fabricanteEmbalagem}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e.data.moldagem}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e.data.formatoEmbalagem}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e.data.marca}</td>
+                        <td className="px-6 py-4 font-bold text-slate-500 max-w-[150px] truncate">{e.data.descricaoProduto}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e.data.tipoEmbalagem}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{e.data.modeloEmbalagem}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-4 py-1 rounded-full font-black text-[8px] uppercase ${e.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : e.reviewStatus === 'rejected' ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500'}`}>
+                            {e.reviewStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
