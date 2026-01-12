@@ -253,7 +253,7 @@ const App: React.FC = () => {
   };
 
   const handleSendToIntelligence = async (listId: string) => {
-    if (!supabase) return;
+    if (!supabase || !currentList) return;
     try {
       const { error } = await supabase
         .from('inspection_lists')
@@ -263,7 +263,26 @@ const App: React.FC = () => {
       if (error) throw error;
       
       await fetchLists();
-      addNotification("Sucesso", `Lista enviada. E-mail de notificação encaminhado para: ${globalConfig.ic_email}`, "success");
+
+      // Abrir aplicativo de e-mail com mensagem padrão
+      const subject = encodeURIComponent(`NOVA LEITURA PACKSCAN PRO: ${currentList.name}`);
+      const body = encodeURIComponent(
+        `Olá Inteligência Comercial,\n\n` +
+        `Uma nova lista de leitura de embalagens foi concluída e está pronta para análise.\n\n` +
+        `DADOS DA LISTA:\n` +
+        `NOME: ${currentList.name}\n` +
+        `ESTABELECIMENTO: ${currentList.establishment}\n` +
+        `CIDADE: ${currentList.city}\n` +
+        `INSPETOR: ${currentList.inspectorName}\n` +
+        `ITENS COLETADOS: ${currentList.entries?.length || 0}\n\n` +
+        `Por favor, realize a conferência na Base Master.\n\n` +
+        `Atenciosamente,\n` +
+        `Equipe PackScan Pro`
+      );
+      
+      window.location.href = `mailto:${globalConfig.ic_email}?subject=${subject}&body=${body}`;
+      
+      addNotification("Sucesso", `Lista marcada como enviada. Abrindo seu aplicativo de e-mail...`, "success");
     } catch (err: any) {
       addNotification("Erro no Envio", getErrorMessage(err), "warning");
     }
@@ -468,15 +487,15 @@ const App: React.FC = () => {
 
         {activeView === 'list-detail' && currentList && (
           <div className="space-y-6 animate-in fade-in pb-10">
-             <div className="bg-white p-10 rounded-[50px] border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm">
-                <div className="flex items-center gap-4"><button onClick={() => setActiveView('home')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-colors"><ArrowLeft className="w-5 h-5" /></button><div><h2 className="text-3xl font-black uppercase italic tracking-tighter leading-tight">{currentList.name}</h2><p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest flex items-center gap-2"><MapPin className="w-3 h-3 text-blue-600" /> {currentList.establishment} • {currentList.city}</p></div></div>
-                <div className="flex gap-3">
-                   <button onClick={() => handleDeleteList(currentList.id)} className="bg-rose-50 text-rose-500 px-6 py-4 rounded-2xl font-black text-[10px] uppercase border border-rose-100"><Trash2 className="w-4 h-4" /></button>
-                   <button onClick={() => handleSendToIntelligence(currentList.id)} className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl transition-all ${currentList.status === 'waiting_ic' ? 'bg-amber-100 text-amber-600 shadow-amber-50' : 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'}`}>
-                     <Send className="w-4 h-4" /> {currentList.status === 'waiting_ic' ? 'Enviado para IC' : 'Enviar para IC'}
+             <div className="bg-white p-6 md:p-10 rounded-[50px] border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm">
+                <div className="flex items-center gap-4 w-full md:w-auto"><button onClick={() => setActiveView('home')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-colors"><ArrowLeft className="w-5 h-5" /></button><div><h2 className="text-3xl font-black uppercase italic tracking-tighter leading-tight">{currentList.name}</h2><p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest flex items-center gap-2"><MapPin className="w-3 h-3 text-blue-600" /> {currentList.establishment} • {currentList.city}</p></div></div>
+                <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto">
+                   <button onClick={() => handleDeleteList(currentList.id)} className="shrink-0 bg-rose-50 text-rose-500 px-4 py-4 rounded-2xl font-black text-[10px] uppercase border border-rose-100"><Trash2 className="w-4 h-4" /></button>
+                   <button onClick={() => handleSendToIntelligence(currentList.id)} className={`shrink-0 px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl transition-all ${currentList.status === 'waiting_ic' ? 'bg-amber-100 text-amber-600 shadow-amber-50' : 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'}`}>
+                     <Send className="w-4 h-4" /> Enviar IC
                    </button>
-                   <button onClick={() => setActiveView('upload')} className="bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2"><Upload className="w-4 h-4" /> Upload</button>
-                   <button onClick={() => setActiveView('scanner')} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl"><Camera className="w-4 h-4" /> Escanear</button>
+                   <button onClick={() => setActiveView('upload')} className="shrink-0 bg-slate-900 text-white px-4 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2"><Upload className="w-4 h-4" /> Upload</button>
+                   <button onClick={() => setActiveView('scanner')} className="shrink-0 bg-blue-600 text-white px-5 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-xl"><Camera className="w-4 h-4" /> Escanear</button>
                 </div>
              </div>
              <div className="grid gap-8">
