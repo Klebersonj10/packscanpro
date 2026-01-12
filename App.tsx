@@ -253,6 +253,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    if (!supabase) return;
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      setLists([]);
+      setActiveView('home');
+      setCurrentListId(null);
+      addNotification("Sessão Encerrada", "Você saiu do PackScan Pro.", "info");
+    } catch (err: any) {
+      addNotification("Erro ao Sair", getErrorMessage(err), "warning");
+    }
+  };
+
   const handleSendToIntelligence = async (listId: string) => {
     if (!supabase || !currentList) return;
     try {
@@ -499,7 +513,7 @@ const App: React.FC = () => {
 
       <header className="bg-white border-b border-slate-200 sticky top-0 z-[100] px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}><Scan className="w-6 h-6 text-blue-600" /><h1 className="text-xl font-black uppercase italic tracking-tighter leading-none text-slate-900">PackScan <span className="text-blue-600">Pro</span></h1></div>
-        <div className="flex items-center gap-4"><div className="text-right"><p className="text-[10px] font-black uppercase italic text-slate-900 leading-none">{currentUser.name}</p><p className="text-[8px] font-bold uppercase text-blue-600 mt-1">{currentUser.role === 'admin' ? 'Gestão Master' : 'Campo'}</p></div><button onClick={() => supabase?.auth.signOut()} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button></div>
+        <div className="flex items-center gap-4"><div className="text-right"><p className="text-[10px] font-black uppercase italic text-slate-900 leading-none">{currentUser.name}</p><p className="text-[8px] font-bold uppercase text-blue-600 mt-1">{currentUser.role === 'admin' ? 'Gestão Master' : 'Campo'}</p></div><button onClick={handleLogout} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button></div>
       </header>
 
       <main className="max-w-5xl mx-auto p-6">
