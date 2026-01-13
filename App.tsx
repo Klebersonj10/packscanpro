@@ -6,7 +6,7 @@ import {
   TrendingUp, Database, Sparkles, Edit3, Save, Send, Globe, Phone, Settings,
   Tag, BarChart3, PieChart, Info, Users, Box, Hash, Globe2, AlertTriangle, Search,
   Building2, ImageIcon, FileText, ClipboardList, X, Maximize2, Mail, ThumbsUp, ThumbsDown,
-  Trash2, Clock
+  Trash2, Clock, MessageSquare, CheckCircle
 } from 'lucide-react';
 import { InspectionList, ProductEntry, ListStatus, User, ExtractedData, AppNotification } from './types.ts';
 import { SmartScanner } from './components/CameraCapture.tsx';
@@ -50,10 +50,13 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCreatingList, setIsCreatingList] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-  const [editFormData, setEditFormData] = useState<ExtractedData | null>(null);
+  const [editFormData, setEditFormData] = useState<(ExtractedData & { icComment?: string }) | null>(null);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activePhotos, setActivePhotos] = useState<Record<string, number>>({});
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [biFilter, setBiFilter] = useState<'approved' | 'rejected' | 'pending' | null>(null);
 
   const [cityInput, setCityInput] = useState('');
   const [allCities, setAllCities] = useState<string[]>([]);
@@ -73,6 +76,21 @@ const App: React.FC = () => {
       .filter(c => c.length >= 8), 
     [globalConfig.reference_cnpjs]
   );
+
+  const filteredLists = useMemo(() => {
+    if (!searchQuery.trim()) return lists;
+    const query = searchQuery.toLowerCase();
+    return lists.filter(l => 
+      l.name.toLowerCase().includes(query) ||
+      l.establishment.toLowerCase().includes(query) ||
+      l.city.toLowerCase().includes(query) ||
+      l.entries.some(e => 
+        e.data.cnpj.some(c => c.includes(query)) || 
+        e.data.razaoSocial.toLowerCase().includes(query) ||
+        e.data.marca.toLowerCase().includes(query)
+      )
+    );
+  }, [lists, searchQuery]);
 
   const addNotification = (title: string, message: any, type: 'success' | 'info' | 'warning') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -188,6 +206,7 @@ const App: React.FC = () => {
         status: l.status as ListStatus, isClosed: l.is_closed,
         entries: (l.product_entries || []).map((e: any) => ({
           id: e.id, listId: e.list_id, photos: Array.isArray(e.photos) ? e.photos : [], 
+          icComment: e.ic_comment || "",
           data: {
             razaoSocial: e.razao_social || "N/I",
             cnpj: Array.isArray(e.cnpj) ? e.cnpj : [e.cnpj].filter(Boolean),
@@ -308,7 +327,7 @@ const App: React.FC = () => {
         return firstCnpj.includes(ref) || ref.includes(firstCnpj);
       });
 
-      const { error } = await supabase.from('product_entries').update({
+      const updatePayload: any = {
         razao_social: editFormData.razaoSocial,
         marca: editFormData.marca,
         descricao_produto: editFormData.descricaoProduto,
@@ -325,12 +344,18 @@ const App: React.FC = () => {
         cnpj: editFormData.cnpj,
         cnpj_raiz: raiz,
         is_new_prospect: isNew
-      }).eq('id', entryId);
+      };
+
+      if (currentUser?.role === 'admin') {
+        updatePayload.ic_comment = editFormData.icComment;
+      }
+
+      const { error } = await supabase.from('product_entries').update(updatePayload).eq('id', entryId);
       
       if (error) throw error;
       await fetchLists();
       setEditingEntryId(null);
-      addNotification("Sucesso", "Dados atualizados.", "success");
+      addNotification("Sucesso", "Dados atualizados no banco.", "success");
     } catch (err: any) { 
       addNotification("Erro", getErrorMessage(err), "warning"); 
     }
@@ -341,8 +366,15 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('product_entries').update({ review_status: status }).eq('id', entryId);
       if (error) throw error;
+      
       await fetchLists();
-      addNotification("Sucesso", `Item ${status === 'approved' ? 'aprovado' : 'reprovado'} para o BI.`, "success");
+      
+      if (status === 'approved') {
+        const entry = lists.flatMap(l => l.entries).find(e => e.id === entryId);
+        addNotification("Empresa Aprovada", `${entry?.data.razaoSocial || 'Item'} foi validado com sucesso pela IC.`, "success");
+      } else {
+        addNotification("Item Recusado", `O registro foi marcado como reprovado.`, "warning");
+      }
     } catch (err: any) {
       addNotification("Erro", getErrorMessage(err), "warning");
     }
@@ -365,9 +397,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     if (!window.confirm("Excluir lista completa? Todos os itens associados serão removidos.")) return;
     try {
-      // 1. Limpa entradas vinculadas manualmente
       await supabase.from('product_entries').delete().eq('list_id', listId);
-      // 2. Deleta a lista
       const { error } = await supabase.from('inspection_lists').delete().eq('id', listId);
       if (error) throw error;
       
@@ -427,7 +457,6 @@ const App: React.FC = () => {
 
     setIsCreatingList(true);
     try {
-      // Usando insert genérico para garantir compatibilidade com triggers e RLS do Supabase
       const { data, error } = await supabase.from('inspection_lists').insert([{ 
         name, 
         establishment, 
@@ -458,6 +487,11 @@ const App: React.FC = () => {
   const analytics = useMemo(() => {
     const all = lists.flatMap(l => l.entries || []);
     const total = all.length;
+    
+    const filteredEntriesByBI = biFilter 
+      ? all.filter(e => e.reviewStatus === biFilter)
+      : [];
+
     const manufacturersRaw = all.reduce<any>((acc, e) => { const m = e.data.fabricanteEmbalagem || 'N/I'; acc[m] = (acc[m] || 0) + 1; return acc; }, {});
     const manufacturers = Object.entries(manufacturersRaw).sort((a,b) => (b[1] as any) - (a[1] as any));
     const maxManufacturer = Math.max(...Object.values(manufacturersRaw) as number[], 1);
@@ -476,9 +510,10 @@ const App: React.FC = () => {
       manufacturerRanking: manufacturers.slice(0, 5),
       maxManufacturer,
       moldingRanking: molding,
-      maxMolding
+      maxMolding,
+      biFilteredEntries: filteredEntriesByBI
     };
-  }, [lists]);
+  }, [lists, biFilter]);
 
   if (isLoadingAuth) return <div className="min-h-screen flex items-center justify-center bg-white"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>;
 
@@ -519,14 +554,30 @@ const App: React.FC = () => {
       <main className="max-w-5xl mx-auto p-6">
         {activeView === 'home' && (
           <div className="space-y-8 animate-in fade-in">
-            <div className="flex justify-between items-center pt-4"><h2 className="text-xl font-black uppercase italic tracking-tighter">{currentUser.role === 'admin' ? 'Todas as Listas (Admin)' : 'Minhas Listas'}</h2><button onClick={() => { setCityInput(''); setActiveView('create-list'); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100 transition-all active:scale-95">+ Nova Lista</button></div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4">
+              <h2 className="text-xl font-black uppercase italic tracking-tighter">{currentUser.role === 'admin' ? 'Todas as Listas (Admin)' : 'Minhas Listas'}</h2>
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="relative flex-grow md:w-80">
+                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                   <input 
+                      type="text" 
+                      placeholder="BUSCAR LISTA, PDV OU CNPJ..." 
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="w-full bg-white border border-slate-200 pl-10 pr-4 py-3 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-blue-400 shadow-sm"
+                   />
+                </div>
+                <button onClick={() => { setCityInput(''); setActiveView('create-list'); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100 transition-all active:scale-95 whitespace-nowrap">+ Nova Lista</button>
+              </div>
+            </div>
             <div className="grid gap-4">
-              {lists.map(list => (
+              {filteredLists.map(list => (
                 <div key={list.id} className="bg-white p-6 rounded-[35px] border border-slate-200 flex items-center justify-between hover:shadow-xl group transition-all" onClick={() => { setCurrentListId(list.id); setActiveView('list-detail'); }}>
                    <div className="flex items-center gap-5 flex-grow cursor-pointer"><div className="w-14 h-14 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner"><LayoutList /></div><div><h3 className="font-black text-lg uppercase italic leading-none">{list.name}</h3><p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest"><MapPin className="w-3 h-3 inline" /> {list.establishment} • {list.city} {currentUser.role === 'admin' && `• Por: ${list.inspectorName}`}</p></div></div>
                    <div className="flex items-center gap-3"><button onClick={(e) => { e.stopPropagation(); handleDeleteList(list.id); }} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 className="w-5 h-5" /></button><ChevronRight className="w-6 h-6 text-slate-200 group-hover:text-blue-600 transition-colors" /></div>
                 </div>
               ))}
+              {filteredLists.length === 0 && <div className="text-center py-10 text-slate-400 font-bold uppercase text-xs italic">Nenhuma lista ou empresa encontrada para "{searchQuery}"</div>}
             </div>
           </div>
         )}
@@ -591,7 +642,7 @@ const App: React.FC = () => {
                                 {editingEntryId === entry.id ? (
                                   <button onClick={() => handleUpdateEntry(entry.id)} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg"><Save className="w-5 h-5" /></button>
                                 ) : (
-                                  <button onClick={() => { setEditingEntryId(entry.id); setEditFormData({...entry.data}); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl hover:text-blue-600 transition-colors"><Edit3 className="w-5 h-5" /></button>
+                                  <button onClick={() => { setEditingEntryId(entry.id); setEditFormData({...entry.data, icComment: entry.icComment}); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl hover:text-blue-600 transition-colors"><Edit3 className="w-5 h-5" /></button>
                                 )}
                                 <button onClick={() => handleDeleteEntry(entry.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors" title="Remover Item">
                                    <Trash2 className="w-5 h-5" />
@@ -645,19 +696,35 @@ const App: React.FC = () => {
                                 </div>
                               </div>
                            </div>
+
+                           <div className="mt-6 p-5 bg-slate-900/5 rounded-[30px] border border-slate-900/10">
+                              <h5 className="text-[9px] font-black text-slate-900 uppercase italic flex items-center gap-2 mb-3"><MessageSquare className="w-3 h-3" /> Comentários Inteligência Comercial</h5>
+                              {editingEntryId === entry.id && currentUser?.role === 'admin' ? (
+                                <textarea 
+                                   className="w-full text-[10px] font-black p-4 bg-white border rounded-2xl h-24 outline-none focus:border-blue-400"
+                                   placeholder="Adicionar observações técnicas da IC..."
+                                   value={editFormData?.icComment}
+                                   onChange={e => setEditFormData(prev => prev ? {...prev, icComment: e.target.value} : null)}
+                                />
+                              ) : (
+                                <p className="text-[11px] font-bold text-slate-600 italic leading-relaxed">
+                                  {entry.icComment || "Nenhuma observação técnica disponível para este registro."}
+                                </p>
+                              )}
+                           </div>
                            
-                           <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+                           <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
                              <div className="flex items-center gap-2">
                                <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase italic tracking-widest ${entry.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-600' : entry.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
                                  Status BI: {entry.reviewStatus === 'pending' ? 'Pendente Analise' : entry.reviewStatus === 'approved' ? 'Aprovado IC' : 'Reprovado IC'}
                                </span>
                              </div>
-                             <div className="flex gap-3">
+                             <div className="flex gap-3 shrink-0">
                                <button onClick={() => handleSetReviewStatus(entry.id, 'rejected')} className={`p-4 rounded-2xl flex items-center gap-2 transition-all ${entry.reviewStatus === 'rejected' ? 'bg-rose-600 text-white shadow-lg' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}>
-                                 <ThumbsDown className="w-5 h-5" />
+                                 <ThumbsDown className="w-5 h-5 shrink-0" />
                                </button>
                                <button onClick={() => handleSetReviewStatus(entry.id, 'approved')} className={`p-4 rounded-2xl flex items-center gap-2 transition-all ${entry.reviewStatus === 'approved' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-emerald-50 text-emerald-500 hover:bg-emerald-100'}`}>
-                                 <ThumbsUp className="w-5 h-5" />
+                                 <ThumbsUp className="w-5 h-5 shrink-0" />
                                </button>
                              </div>
                            </div>
@@ -671,44 +738,116 @@ const App: React.FC = () => {
 
         {activeView === 'bi-analytics' && (
           <div className="space-y-10 animate-in fade-in pb-16">
-            <div className="flex items-center gap-5 py-6">
-              <div className="bg-blue-600 w-16 h-16 rounded-[24px] flex items-center justify-center shadow-2xl shadow-blue-200">
-                <BarChart3 className="text-white w-8 h-8" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 py-6 border-b border-slate-100">
+              <div className="flex items-center gap-5">
+                <div className="bg-blue-600 w-16 h-16 rounded-[24px] flex items-center justify-center shadow-2xl shadow-blue-200">
+                  <BarChart3 className="text-white w-8 h-8" />
+                </div>
+                <div>
+                   <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Ranking BI Comercial</h2>
+                   <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest italic">Inteligência Estratégica PackScan Pro</p>
+                </div>
               </div>
-              <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900">Ranking BI Comercial</h2>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-10 rounded-[45px] border border-slate-50 shadow-sm flex items-center gap-8">
-                <div className="w-20 h-20 bg-emerald-50 rounded-[28px] flex items-center justify-center">
+              <button 
+                onClick={() => setBiFilter(biFilter === 'approved' ? null : 'approved')}
+                className={`bg-white p-10 rounded-[45px] border flex items-center gap-8 text-left transition-all hover:translate-y-[-4px] active:scale-95 ${biFilter === 'approved' ? 'ring-4 ring-emerald-500/20 border-emerald-500 bg-emerald-50/10' : 'border-slate-50 shadow-sm'}`}
+              >
+                <div className="w-20 h-20 bg-emerald-50 rounded-[28px] flex items-center justify-center shrink-0">
                   <ThumbsUp className="w-10 h-10 text-emerald-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Aprovados IC</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Aprovados IC</p>
                   <p className="text-5xl font-black text-emerald-600 leading-none">{analytics.approvedCount}</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white p-10 rounded-[45px] border border-slate-50 shadow-sm flex items-center gap-8">
-                <div className="w-20 h-20 bg-rose-50 rounded-[28px] flex items-center justify-center">
+              <button 
+                onClick={() => setBiFilter(biFilter === 'rejected' ? null : 'rejected')}
+                className={`bg-white p-10 rounded-[45px] border flex items-center gap-8 text-left transition-all hover:translate-y-[-4px] active:scale-95 ${biFilter === 'rejected' ? 'ring-4 ring-rose-500/20 border-rose-500 bg-rose-50/10' : 'border-slate-50 shadow-sm'}`}
+              >
+                <div className="w-20 h-20 bg-rose-50 rounded-[28px] flex items-center justify-center shrink-0">
                   <ThumbsDown className="w-10 h-10 text-rose-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Reprovados IC</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Reprovados IC</p>
                   <p className="text-5xl font-black text-rose-500 leading-none">{analytics.rejectedCount}</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white p-10 rounded-[45px] border border-slate-50 shadow-sm flex items-center gap-8">
-                <div className="w-20 h-20 bg-amber-50 rounded-[28px] flex items-center justify-center">
+              <button 
+                onClick={() => setBiFilter(biFilter === 'pending' ? null : 'pending')}
+                className={`bg-white p-10 rounded-[45px] border flex items-center gap-8 text-left transition-all hover:translate-y-[-4px] active:scale-95 ${biFilter === 'pending' ? 'ring-4 ring-amber-500/20 border-amber-500 bg-amber-50/10' : 'border-slate-50 shadow-sm'}`}
+              >
+                <div className="w-20 h-20 bg-amber-50 rounded-[28px] flex items-center justify-center shrink-0">
                   <Clock className="w-10 h-10 text-amber-500" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-3 italic">Pendentes Analise</p>
+                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest leading-none mb-3 italic">Pendentes Analise</p>
                   <p className="text-5xl font-black text-amber-600 leading-none">{analytics.pendingCount}</p>
                 </div>
-              </div>
+              </button>
             </div>
+
+            {biFilter && (
+              <div className="bg-white p-10 rounded-[50px] border border-slate-200 shadow-xl space-y-8 animate-in slide-in-from-top-4 overflow-hidden">
+                 <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+                    <h3 className="text-sm font-black uppercase italic tracking-widest flex items-center gap-3">
+                      <LayoutList className="w-5 h-5 text-blue-600" /> 
+                      Empresas com status: <span className={biFilter === 'approved' ? 'text-emerald-600' : biFilter === 'rejected' ? 'text-rose-500' : 'text-amber-600'}>{biFilter.toUpperCase()}</span>
+                    </h3>
+                    <div className="flex gap-2">
+                       {biFilter === 'pending' && currentUser?.role === 'admin' && (
+                         <button 
+                            onClick={async () => {
+                               if(window.confirm(`Aprovar todos os ${analytics.biFilteredEntries.length} itens pendentes?`)) {
+                                  setIsProcessing(true);
+                                  try {
+                                    await Promise.all(analytics.biFilteredEntries.map(e => handleSetReviewStatus(e.id, 'approved')));
+                                    addNotification("Sucesso", "Todos os registros foram aprovados.", "success");
+                                  } catch (err) {
+                                    addNotification("Erro", "Ocorreu um erro ao aprovar registros.", "warning");
+                                  } finally {
+                                    setIsProcessing(false);
+                                  }
+                               }
+                            }}
+                            className="bg-emerald-600 text-white px-5 py-3 rounded-2xl font-black text-[9px] uppercase shadow-lg shadow-emerald-100 flex items-center gap-2"
+                         >
+                            <CheckCircle className="w-4 h-4" /> Aprovar Todos Pendentes
+                         </button>
+                       )}
+                       <button onClick={() => setBiFilter(null)} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200"><X className="w-4 h-4" /></button>
+                    </div>
+                 </div>
+                 <div className="grid gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    {analytics.biFilteredEntries.map(e => (
+                      <div key={e.id} className="p-6 bg-slate-50/50 rounded-[25px] border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-all">
+                         <div className="flex items-center gap-5 min-w-0">
+                            <div className="w-16 h-16 rounded-[20px] overflow-hidden shrink-0 border border-slate-200"><img src={e.photos[0]} className="w-full h-full object-cover" /></div>
+                            <div className="min-w-0">
+                               <p className="text-[12px] font-black uppercase italic text-slate-900 truncate leading-none">{e.data.razaoSocial}</p>
+                               <p className="text-[9px] font-bold text-slate-400 mt-2">CNPJ: {e.data.cnpj[0]}</p>
+                               <p className="text-[8px] font-black text-blue-500 uppercase mt-1 tracking-widest">{e.data.marca}</p>
+                            </div>
+                         </div>
+                         <div className="flex gap-2 shrink-0">
+                            {biFilter !== 'approved' && (
+                              <button onClick={() => handleSetReviewStatus(e.id, 'approved')} className="p-4 bg-white text-emerald-500 rounded-2xl shadow-sm border border-slate-100 hover:bg-emerald-500 hover:text-white transition-all"><ThumbsUp className="w-5 h-5" /></button>
+                            )}
+                            {biFilter !== 'rejected' && (
+                              <button onClick={() => handleSetReviewStatus(e.id, 'rejected')} className="p-4 bg-white text-rose-500 rounded-2xl shadow-sm border border-slate-100 hover:bg-rose-500 hover:text-white transition-all"><ThumbsDown className="w-5 h-5" /></button>
+                            )}
+                            <button onClick={() => { setCurrentListId(e.listId); setActiveView('list-detail'); }} className="p-4 bg-white text-blue-600 rounded-2xl shadow-sm border border-slate-100 hover:bg-blue-600 hover:text-white transition-all"><Maximize2 className="w-5 h-5" /></button>
+                         </div>
+                      </div>
+                    ))}
+                    {analytics.biFilteredEntries.length === 0 && <div className="text-center py-10"><p className="text-slate-400 font-bold uppercase text-[11px] italic">Nenhum registro para exibir nesta categoria.</p></div>}
+                 </div>
+              </div>
+            )}
 
             <div className="space-y-6">
               <div className="bg-white p-12 rounded-[50px] border border-slate-50 shadow-sm space-y-8">
@@ -788,47 +927,68 @@ const App: React.FC = () => {
 
         {activeView === 'master-table' && (
           <div className="space-y-6 animate-in slide-in-from-right-5 pb-10">
-            <div className="flex justify-between items-center pt-4">
-              <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900">Database Master</h2>
-              <button onClick={() => { 
-                const data = lists.flatMap(l => (l.entries || []).map(e => ({ 
-                  DATA_LEITURA: e.checkedAt, 
-                  INSPETOR: l.inspectorName, 
-                  PDV: l.establishment, 
-                  CIDADE: l.city, 
-                  ESTADO_UF: l.city.split('/').pop()?.trim() || 'N/I',
-                  RAZAO_SOCIAL: e.data.razaoSocial, 
-                  MARCA: e.data.marca, 
-                  DESCRICAO: e.data.descricaoProduto, 
-                  CONTEUDO: e.data.conteudo,
-                  CNPJ: e.data.cnpj[0], 
-                  STATUS_BASE: e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado',
-                  FABRICANTE_EMBALAGEM: e.data.fabricanteEmbalagem, 
-                  MOLDAGEM: e.data.moldagem, 
-                  FORMATO: e.data.formatoEmbalagem,
-                  TIPO_EMBALAGEM: e.data.tipoEmbalagem,
-                  MODELO_EMBALAGEM: e.data.modeloEmbalagem,
-                  ENDERECO: e.data.endereco,
-                  CEP: e.data.cep,
-                  TELEFONE: e.data.telefone,
-                  SITE: e.data.site,
-                  STATUS_IC: e.reviewStatus 
-                })));
-                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Master"); XLSX.writeFile(wb, `PackScan_Master_21_Cols_${new Date().toISOString().split('T')[0]}.xlsx`); 
-              }} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2"><FileSpreadsheet className="w-5 h-5" /> Exportar 21 Colunas XLSX</button>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4">
+              <h2 className="text-3xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Database Master</h2>
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                 <div className="relative flex-grow md:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                       type="text" 
+                       placeholder="BUSCAR CNPJ, RAZÃO OU MARCA..." 
+                       value={searchQuery}
+                       onChange={e => setSearchQuery(e.target.value)}
+                       className="w-full bg-white border border-slate-200 pl-10 pr-4 py-4 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-blue-400 shadow-sm"
+                    />
+                 </div>
+                 <button onClick={() => { 
+                  const data = lists.flatMap(l => (l.entries || []).map(e => ({ 
+                    DATA_LEITURA: e.checkedAt, 
+                    INSPETOR: l.inspectorName, 
+                    PDV: l.establishment, 
+                    CIDADE: l.city, 
+                    ESTADO_UF: l.city.split('/').pop()?.trim() || 'N/I',
+                    RAZAO_SOCIAL: e.data.razaoSocial, 
+                    MARCA: e.data.marca, 
+                    DESCRICAO: e.data.descricaoProduto, 
+                    CONTEUDO: e.data.conteudo,
+                    CNPJ: e.data.cnpj[0], 
+                    STATUS_BASE: e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado',
+                    FABRICANTE_EMBALAGEM: e.data.fabricanteEmbalagem, 
+                    MOLDAGEM: e.data.moldagem, 
+                    FORMATO: e.data.formatoEmbalagem,
+                    TIPO_EMBALAGEM: e.data.tipoEmbalagem,
+                    MODELO_EMBALAGEM: e.data.modeloEmbalagem,
+                    ENDERECO: e.data.endereco,
+                    CEP: e.data.cep,
+                    TELEFONE: e.data.telefone,
+                    SITE: e.data.site,
+                    STATUS_IC: e.reviewStatus,
+                    OBSERVACAO_IC: e.icComment
+                  })));
+                  const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Master"); XLSX.writeFile(wb, `PackScan_Master_Database_${new Date().toISOString().split('T')[0]}.xlsx`); 
+                }} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2 shrink-0 hover:bg-emerald-700 transition-colors"><FileSpreadsheet className="w-5 h-5" /> Exportar 21 Cols XLSX</button>
+              </div>
             </div>
             <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-[11px] whitespace-nowrap">
                   <thead className="bg-slate-900 text-white uppercase italic">
                     <tr>
-                      {["Data", "PDV", "Cidade", "Razão Social", "CNPJ", "Base", "Fabricante Peça", "Moldagem", "Formato", "Marca", "Descrição", "Tipo", "Modelo", "Status IC"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}
+                      {["Data", "PDV", "Cidade", "Razão Social", "CNPJ", "Base", "Fabricante Peça", "Moldagem", "Formato", "Marca", "Descrição", "Tipo", "Modelo", "Status IC", "Observação IC"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {lists.flatMap(listRow => (listRow.entries || []).map(e => ({ ...e, _list: listRow }))).map((e, i) => (
+                    {lists.flatMap(listRow => (listRow.entries || []).map(e => ({ ...e, _list: listRow })))
+                      .filter(e => {
+                        const q = searchQuery.toLowerCase();
+                        return !searchQuery.trim() || 
+                               e.data.cnpj.some(c => c.includes(q)) || 
+                               e.data.razaoSocial.toLowerCase().includes(q) ||
+                               e.data.marca.toLowerCase().includes(q);
+                      })
+                      .map((e, i) => (
                       <tr key={i} className="border-b border-slate-50 hover:bg-blue-50/50">
-                        <td className="px-6 py-4 text-slate-400 font-bold">{e.checkedAt.split(' ')[0]}</td>
+                        <td className="px-6 py-4 text-slate-400 font-bold italic">{e.checkedAt.split(' ')[0]}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.establishment}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.city}</td>
                         <td className="px-6 py-4 font-black text-slate-900 italic uppercase">{e.data.razaoSocial}</td>
@@ -850,6 +1010,7 @@ const App: React.FC = () => {
                             {e.reviewStatus}
                           </span>
                         </td>
+                        <td className="px-6 py-4 font-bold text-slate-400 italic max-w-[150px] truncate">{e.icComment || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -919,12 +1080,12 @@ const App: React.FC = () => {
       <footer className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-100 p-6 flex justify-around items-center z-[100] shadow-lg">
           <button onClick={() => setActiveView('home')} className={`flex flex-col items-center gap-1 transition-all ${activeView === 'home' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><LayoutList className="w-7 h-7"/><span className="text-[8px] font-black uppercase tracking-widest">Rotas</span></button>
           <button onClick={() => setActiveView('bi-analytics')} className={`flex flex-col items-center gap-1 transition-all ${activeView === 'bi-analytics' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><BarChart3 className="w-7 h-7"/><span className="text-[8px] font-black uppercase tracking-widest">BI</span></button>
-          <button onClick={() => { if(currentListId) setActiveView('scanner'); else setActiveView('create-list'); }} className="bg-blue-600 text-white w-16 h-16 rounded-[25px] flex items-center justify-center -mt-14 border-8 border-slate-50 shadow-2xl active:scale-90"><Plus className="w-10 h-10" /></button>
+          <button onClick={() => { if(currentListId) setActiveView('scanner'); else setActiveView('create-list'); }} className="bg-blue-600 text-white w-16 h-16 rounded-[25px] flex items-center justify-center -mt-14 border-8 border-slate-50 shadow-2xl active:scale-90 shadow-blue-400/50 transition-transform active:scale-90"><Plus className="w-10 h-10" /></button>
           <button onClick={() => setActiveView('master-table')} className={`flex flex-col items-center gap-1 transition-all ${activeView === 'master-table' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><Database className="w-7 h-7"/><span className="text-[8px] font-black uppercase tracking-widest">Master</span></button>
           <button onClick={() => { if(currentUser?.role === 'admin') setActiveView('admin-settings'); else addNotification("Aviso", "Apenas Administradores", "info"); }} className={`flex flex-col items-center gap-1 transition-all ${activeView === 'admin-settings' ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><Settings className="w-7 h-7"/><span className="text-[8px] font-black uppercase tracking-widest">Gestão</span></button>
       </footer>
 
-      {isProcessing && (<div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[300] flex flex-col items-center justify-center text-white text-center p-6"><Loader2 className="w-20 h-20 text-blue-600 animate-spin mb-8" /><h3 className="text-2xl font-black uppercase italic tracking-tighter">Processando Inteligência PackScan</h3><p className="text-slate-400 text-[10px] font-bold uppercase mt-4 tracking-[0.2em] animate-pulse">Consultando Base Master Global</p></div>)}
+      {isProcessing && (<div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[300] flex flex-col items-center justify-center text-white text-center p-6"><Loader2 className="w-20 h-20 text-blue-600 animate-spin mb-8" /><h3 className="text-2xl font-black uppercase italic tracking-tighter">Processando Inteligência PackScan</h3><p className="text-slate-400 text-[10px] font-bold uppercase mt-4 tracking-[0.2em] animate-pulse">Sincronizando com Base Master Global</p></div>)}
       {zoomImage && (<div onClick={() => setZoomImage(null)} className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-zoom-out"><img src={zoomImage} className="max-w-full max-h-full rounded-2xl shadow-2xl animate-in zoom-in-95" alt="Zoom" /></div>)}
     </div>
   );

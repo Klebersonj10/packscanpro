@@ -46,6 +46,7 @@ export interface ProductEntry {
   reviewStatus: 'approved' | 'rejected' | 'pending'; 
   inspectorId: string;
   listId: string;
+  icComment?: string; // Novo campo de comentário da Inteligência Comercial
 }
 
 export type ListStatus = 'executing' | 'waiting_ic' | 'approved' | 'partial' | 'rejected';
