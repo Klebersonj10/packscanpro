@@ -181,7 +181,7 @@ const App: React.FC = () => {
         role: (profile?.role as 'admin' | 'usuario') || 'usuario',
         createdAt: profile?.created_at || new Date().toISOString()
       });
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Sync Profile Error:", err); }
   };
 
   const fetchLists = async () => {
@@ -230,20 +230,38 @@ const App: React.FC = () => {
       }));
       setLists(remoteLists);
     } catch (err: any) { 
-      console.error("Fetch Error:", err.message);
+      console.error("Fetch Lists Error:", err.message);
     }
   };
 
   useEffect(() => {
     if (!supabase) { setIsLoadingAuth(false); return; }
-    supabase.auth.getSession().then(({ data: { session } }) => { 
-      if (session?.user) syncUserProfile(session.user); 
+    
+    supabase.auth.getSession().then(({ data: { session }, error }) => { 
+      if (error) {
+        if (error.message.toLowerCase().includes('refresh token')) {
+          supabase.auth.signOut().catch(() => {});
+          setCurrentUser(null);
+        }
+      }
+      if (session?.user) {
+        syncUserProfile(session.user); 
+      }
       setIsLoadingAuth(false); 
-    });
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) syncUserProfile(session.user); else { setCurrentUser(null); setLists([]); }
+    }).catch(err => {
       setIsLoadingAuth(false);
     });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setLists([]);
+      } else if (session?.user) {
+        syncUserProfile(session.user);
+      }
+      setIsLoadingAuth(false);
+    });
+
     fetchGlobalSettings();
     return () => authListener.subscription.unsubscribe();
   }, []);
@@ -262,7 +280,7 @@ const App: React.FC = () => {
       } else {
         const { error } = await supabase.auth.signUp({ email: authForm.email, password: authForm.password, options: { data: { name: authForm.name } } });
         if (error) throw error;
-        addNotification("Sucesso", "Conta criada!", "success");
+        addNotification("Sucesso", "Conta criada! Verifique seu e-mail.", "success");
         setIsLoginView(true);
       }
     } catch (err: any) { 
@@ -275,14 +293,15 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     if (!supabase) return;
     try {
-      await supabase.auth.signOut();
       setCurrentUser(null);
       setLists([]);
       setActiveView('home');
       setCurrentListId(null);
+      await supabase.auth.signOut();
       addNotification("Sessão Encerrada", "Você saiu do PackScan Pro.", "info");
     } catch (err: any) {
-      addNotification("Erro ao Sair", getErrorMessage(err), "warning");
+      window.localStorage.clear(); 
+      addNotification("Sessão Encerrada", "Você foi desconectado.", "info");
     }
   };
 
@@ -307,7 +326,6 @@ const App: React.FC = () => {
                    `CIDADE: ${currentList.city}\n` +
                    `INSPETOR: ${currentList.inspectorName}\n` +
                    `ITENS COLETADOS: ${currentList.entries?.length || 0}\n\n` +
-                   `Os dados atualizados já constam na Base Master.\n\n` +
                    `Atenciosamente,\n` +
                    `Equipe de Campo - PackScan Pro`;
       
@@ -322,10 +340,17 @@ const App: React.FC = () => {
     if (!editFormData || !supabase) return;
     try {
       const raiz = getCnpjRaiz(editFormData.cnpj);
-      const isNew = !cleanRefCnpjs.some(ref => {
-        const firstCnpj = (editFormData.cnpj[0] || '').replace(/\D/g, '');
-        return firstCnpj.includes(ref) || ref.includes(firstCnpj);
-      });
+      
+      // Lógica de Cruzamento Duplo (Base Ref + Base de Leituras)
+      const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
+      const { data: dbExisting } = await supabase
+        .from('product_entries')
+        .select('id')
+        .eq('cnpj_raiz', raiz)
+        .neq('id', entryId)
+        .limit(1);
+      
+      const isNew = !inRef && (!dbExisting || dbExisting.length === 0);
 
       const updatePayload: any = {
         razao_social: editFormData.razaoSocial,
@@ -346,6 +371,7 @@ const App: React.FC = () => {
         is_new_prospect: isNew
       };
 
+      // Só atualiza ic_comment se for admin
       if (currentUser?.role === 'admin') {
         updatePayload.ic_comment = editFormData.icComment;
       }
@@ -363,6 +389,13 @@ const App: React.FC = () => {
 
   const handleSetReviewStatus = async (entryId: string, status: 'approved' | 'rejected') => {
     if (!supabase) return;
+    
+    // Restrição: Apenas ADMIN pode aprovar/reprovar
+    if (currentUser?.role !== 'admin') {
+      addNotification("Acesso Negado", "Apenas administradores podem validar registros para o BI.", "warning");
+      return;
+    }
+
     try {
       const { error } = await supabase.from('product_entries').update({ review_status: status }).eq('id', entryId);
       if (error) throw error;
@@ -371,7 +404,7 @@ const App: React.FC = () => {
       
       if (status === 'approved') {
         const entry = lists.flatMap(l => l.entries).find(e => e.id === entryId);
-        addNotification("Empresa Aprovada", `${entry?.data.razaoSocial || 'Item'} foi validado com sucesso pela IC.`, "success");
+        addNotification("Empresa Aprovada", `${entry?.data.razaoSocial || 'Item'} validado com sucesso.`, "success");
       } else {
         addNotification("Item Recusado", `O registro foi marcado como reprovado.`, "warning");
       }
@@ -395,12 +428,11 @@ const App: React.FC = () => {
 
   const handleDeleteList = async (listId: string) => {
     if (!supabase) return;
-    if (!window.confirm("Excluir lista completa? Todos os itens associados serão removidos.")) return;
+    if (!window.confirm("Excluir lista completa?")) return;
     try {
       await supabase.from('product_entries').delete().eq('list_id', listId);
       const { error } = await supabase.from('inspection_lists').delete().eq('id', listId);
       if (error) throw error;
-      
       setActiveView('home');
       setCurrentListId(null);
       await fetchLists();
@@ -417,10 +449,15 @@ const App: React.FC = () => {
       const extracted = await extractDataFromPhotos(photos);
       const raiz = getCnpjRaiz(extracted.cnpj);
       
-      const isNew = !cleanRefCnpjs.some(ref => {
-        const firstCnpj = (extracted.cnpj[0] || '').replace(/\D/g, '');
-        return firstCnpj.includes(ref) || ref.includes(firstCnpj);
-      });
+      // Lógica de Cruzamento Duplo em tempo real
+      const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
+      const { data: dbExisting } = await supabase
+        .from('product_entries')
+        .select('id')
+        .eq('cnpj_raiz', raiz)
+        .limit(1);
+      
+      const isNew = !inRef && (!dbExisting || dbExisting.length === 0);
       
       const { error } = await supabase.from('product_entries').insert({
         list_id: currentListId, inspector_id: currentUser.id, photos,
@@ -441,10 +478,7 @@ const App: React.FC = () => {
   };
 
   const handleCreateList = async (formData: FormData) => {
-    if (!currentUser || !supabase) {
-        addNotification("Erro", "Sessão ou conexão não encontrada.", "warning");
-        return;
-    }
+    if (!currentUser || !supabase) return;
     
     const name = (formData.get('name') as string)?.trim()?.toUpperCase();
     const establishment = (formData.get('establishment') as string)?.trim()?.toUpperCase();
@@ -458,27 +492,21 @@ const App: React.FC = () => {
     setIsCreatingList(true);
     try {
       const { data, error } = await supabase.from('inspection_lists').insert([{ 
-        name, 
-        establishment, 
-        city, 
-        inspector_name: currentUser.name, 
-        inspector_id: currentUser.id, 
+        name, establishment, city, 
+        inspector_name: currentUser.name, inspector_id: currentUser.id, 
         status: 'executing' 
       }]).select('*');
       
       if (error) throw error;
-      
+      if (!data || data.length === 0) throw new Error("Erro ao persistir lista.");
+
       await fetchLists();
-      
-      const newList = data?.[0];
-      if (newList) { 
-        setCurrentListId(newList.id); 
-        setActiveView('list-detail'); 
-      }
+      const newList = data[0];
+      setCurrentListId(newList.id); 
+      setActiveView('list-detail'); 
       addNotification("Sucesso", "Lista criada com sucesso.", "success");
     } catch (err: any) { 
-      console.error("Erro ao criar lista:", err);
-      addNotification("Erro no Banco", getErrorMessage(err), "warning"); 
+      addNotification("Erro na Criação", getErrorMessage(err), "warning"); 
     } finally { 
       setIsCreatingList(false); 
     }
@@ -1027,7 +1055,7 @@ const App: React.FC = () => {
               <div className="space-y-6">
                 <div className="space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail IC</label><input type="email" value={globalConfig.ic_email} onChange={e => setGlobalConfig({...globalConfig, ic_email: e.target.value})} className="w-full bg-slate-50 border p-5 rounded-2xl text-sm font-bold outline-none" /></div>
                 <div className="space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Base de CNPJs de Referência (Compartilhada)</label><textarea value={globalConfig.reference_cnpjs} onChange={e => setGlobalConfig({...globalConfig, reference_cnpjs: e.target.value})} className="w-full bg-slate-50 border p-6 rounded-[30px] text-xs font-mono min-h-[200px] outline-none" placeholder="CNPJ1, CNPJ2..." /></div>
-                <button onClick={() => saveGlobalSettings(globalConfig.ic_email, globalConfig.reference_cnpjs)} className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Gravar Configurações Master</button>
+                <button onClick={() => saveGlobalSettings(globalConfig.ic_email, globalConfig.reference_cnpjs)} className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-blue-700 transition-colors">Gravar Configurações Master</button>
               </div>
             </div>
           </div>
