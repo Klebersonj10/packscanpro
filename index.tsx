@@ -5,18 +5,14 @@ import App from './App.tsx';
 
 /**
  * Ponto de montagem principal.
- * O polyfill de 'process' agora reside no index.html para garantir execução síncrona prévia.
+ * Removido StrictMode para evitar conflitos de inicialização de sessão em PWAs.
  */
 const rootElement = document.getElementById('root');
 
 if (rootElement) {
   try {
     const root = ReactDOM.createRoot(rootElement);
-    root.render(
-      <React.StrictMode>
-        <App />
-      </React.StrictMode>
-    );
+    root.render(<App />);
   } catch (error) {
     console.error("Falha ao montar o aplicativo:", error);
     rootElement.innerHTML = `

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, ArrowLeft, Loader2, Scan, ChevronRight, 
@@ -235,15 +236,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!supabase) { setIsLoadingAuth(false); return; }
-    
-    // Timeout de segurança para evitar carregamento infinito em atalhos standalone
-    const safetyTimeout = setTimeout(() => {
-      if (isLoadingAuth) {
+    // Timeout forçado de 3s para garantir que a tela de carregamento suma
+    const safetyTimer = setTimeout(() => {
         setIsLoadingAuth(false);
-        console.warn("Sessão demorou demais para carregar. Forçando carregamento.");
-      }
-    }, 5000);
+    }, 3000);
+
+    if (!supabase) { setIsLoadingAuth(false); return; }
 
     const checkSession = async () => {
       try {
@@ -258,10 +256,10 @@ const App: React.FC = () => {
           await syncUserProfile(session.user); 
         }
       } catch (err) {
-        console.error("Auth initialization error:", err);
+        console.error("Auth init error:", err);
       } finally {
         setIsLoadingAuth(false);
-        clearTimeout(safetyTimeout);
+        clearTimeout(safetyTimer);
       }
     };
 
@@ -280,7 +278,7 @@ const App: React.FC = () => {
     fetchGlobalSettings();
     return () => {
       authListener.subscription.unsubscribe();
-      clearTimeout(safetyTimeout);
+      clearTimeout(safetyTimer);
     };
   }, []);
 

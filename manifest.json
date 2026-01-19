@@ -3,8 +3,10 @@
   "name": "PackScan Pro",
   "short_name": "PackScan",
   "description": "Extrator Inteligente de Dados de Embalagens",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f8fafc",
   "theme_color": "#2563eb",
   "icons": [

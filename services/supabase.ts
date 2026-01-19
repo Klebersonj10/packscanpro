@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 const DEFAULT_URL = 'https://mmqjtswnezofrklgaowy.supabase.co';
@@ -13,18 +14,24 @@ const initSupabase = () => {
   }
 
   try {
+    // Tenta acessar localStorage para verificar disponibilidade
+    const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
+    
     return createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: window.localStorage,
+        storage: storage,
         flowType: 'pkce'
       }
     });
   } catch (err) {
     console.error("Erro ao inicializar cliente Supabase:", err);
-    return null;
+    // Retorno de emergência sem persistência caso localStorage falhe
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false }
+    });
   }
 };
 
