@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, ArrowLeft, Loader2, Scan, ChevronRight, 
@@ -20,7 +19,6 @@ const getErrorMessage = (err: any): string => {
   if (!err) return "Erro desconhecido";
   if (typeof err === 'string') return err;
   if (err.message && typeof err.message === 'string') return err.message;
-  if (err.error_description && typeof err.error_description === 'string') return err.error_description;
   return JSON.stringify(err);
 };
 
@@ -236,39 +234,30 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Timeout agressivo de 2.5s para garantir que a aplicação abra mesmo se o Supabase demorar
-    const safetyTimer = setTimeout(() => {
-        setIsLoadingAuth(false);
-    }, 2500);
+    // Timeout para garantir que o loader desapareça em no máximo 4 segundos
+    const timer = setTimeout(() => setIsLoadingAuth(false), 4000);
 
-    if (!supabase) { 
-      setIsLoadingAuth(false);
-      clearTimeout(safetyTimer);
-      return; 
-    }
-
-    const checkSession = async () => {
+    const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          await syncUserProfile(session.user); 
+          await syncUserProfile(session.user);
         }
       } catch (err) {
-        console.error("Auth initialization error:", err);
+        console.error("Auth init error", err);
       } finally {
         setIsLoadingAuth(false);
-        clearTimeout(safetyTimer);
+        clearTimeout(timer);
       }
     };
 
-    checkSession();
+    initializeAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-        setLists([]);
-      } else if (session?.user) {
+      if (session?.user) {
         await syncUserProfile(session.user);
+      } else {
+        setCurrentUser(null);
       }
       setIsLoadingAuth(false);
     });
@@ -276,7 +265,7 @@ const App: React.FC = () => {
     fetchGlobalSettings();
     return () => {
       authListener.subscription.unsubscribe();
-      clearTimeout(safetyTimer);
+      clearTimeout(timer);
     };
   }, []);
 
