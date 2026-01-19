@@ -1,8 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
+// Função segura para acessar variáveis de ambiente
+const getSafeEnv = (key: string, fallback: string): string => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key] as string;
+    }
+  } catch (e) {}
+  return fallback;
+};
+
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const apiKey = getSafeEnv('API_KEY', '');
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
     const prepareImagePart = (base64: string) => {
