@@ -237,19 +237,32 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!supabase) { setIsLoadingAuth(false); return; }
     
-    // Melhoria na recuperação de sessão para atalhos mobile
+    // Timeout de segurança para evitar carregamento infinito em atalhos standalone
+    const safetyTimeout = setTimeout(() => {
+      if (isLoadingAuth) {
+        setIsLoadingAuth(false);
+        console.warn("Sessão demorou demais para carregar. Forçando carregamento.");
+      }
+    }, 5000);
+
     const checkSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        if (error.message.toLowerCase().includes('refresh token')) {
-          await supabase.auth.signOut().catch(() => {});
-          setCurrentUser(null);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          if (error.message.toLowerCase().includes('refresh token')) {
+            await supabase.auth.signOut().catch(() => {});
+            setCurrentUser(null);
+          }
         }
+        if (session?.user) {
+          await syncUserProfile(session.user); 
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+      } finally {
+        setIsLoadingAuth(false);
+        clearTimeout(safetyTimeout);
       }
-      if (session?.user) {
-        await syncUserProfile(session.user); 
-      }
-      setIsLoadingAuth(false);
     };
 
     checkSession();
@@ -265,7 +278,10 @@ const App: React.FC = () => {
     });
 
     fetchGlobalSettings();
-    return () => authListener.subscription.unsubscribe();
+    return () => {
+      authListener.subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   useEffect(() => { if (currentUser) fetchLists(); }, [currentUser]);
