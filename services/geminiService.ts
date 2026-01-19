@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
@@ -15,25 +16,25 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const imageParts = photos.map(prepareImagePart);
     const textPart = { 
       text: `Analise estas fotos de uma embalagem industrial. 
-      Extraia os seguintes dados:
+      Extraia os seguintes dados de forma extremamente precisa:
       - Razão Social (Fabricante do produto final)
-      - CNPJ (Todos os encontrados)
+      - CNPJ (Todos os encontrados, formate como 00.000.000/0000-00)
       - Marca do produto
-      - Descrição do Produto
-      - Conteúdo Líquido (Ex: 500g, 1kg)
+      - Descrição do Produto (Nome técnico e comercial)
+      - Conteúdo Líquido (Ex: 500g, 1kg, 900ml)
       - Endereço Completo, CEP, Telefone e Site
-      - Fabricante da Embalagem Plástica (Verificar no relevo do fundo da peça)
-      - Moldagem: Deve ser apenas 'INJETADO' ou 'TERMOFORMADO'
+      - Fabricante da Embalagem Plástica (Geralmente encontrado no relevo do fundo da peça - procure por logos ou nomes de empresas de injeção/termoformagem)
+      - Moldagem: Deve ser apenas 'INJETADO' ou 'TERMOFORMADO' (Analise rebarbas, pontos de injeção ou marcas de molde)
       - Formato: Deve ser apenas 'REDONDO', 'QUADRADO', 'RETANGULAR' ou 'OVAL'. JAMAIS utilize o termo 'CILÍNDRICO'.
-      - Tipo de Embalagem (Ex: POTE, TAMPA, BALDE)
-      - Modelo da Embalagem (Ex: P500, B10)` 
+      - Tipo de Embalagem (Ex: POTE, TAMPA, BALDE, CAIXA, FRASCO)
+      - Modelo da Embalagem (Ex: P500, B10, Ref 1234)` 
     };
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um especialista em OCR industrial. Retorne estritamente um JSON. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Não use 'CILÍNDRICO'. Use 'N/I' para dados ausentes.",
+        systemInstruction: "Você é um especialista em OCR industrial e engenharia de embalagens. Sua missão é extrair dados técnicos com precisão absoluta. Retorne estritamente um JSON. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Não use 'CILÍNDRICO'. Use 'N/I' para dados ausentes. Se houver múltiplos CNPJs, extraia todos em um array.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -64,7 +65,6 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const raw = JSON.parse(jsonText.trim());
     const sanitize = (val: any) => (val === null || val === undefined || val === "" || val === "N/I") ? "N/I" : String(val);
 
-    // Validação forçada de Formato para evitar "Cilindrico"
     let formato = sanitize(raw.formatoEmbalagem).toUpperCase();
     if (formato.includes("CILIN") || formato.includes("CILÍN")) {
       formato = "REDONDO";
@@ -89,6 +89,6 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     };
   } catch (error) {
     console.error("Erro no Gemini Service:", error);
-    throw new Error("Falha na extração de dados. Tente novamente com fotos mais nítidas.");
+    throw new Error("Falha na extração de dados técnicos. Certifique-se de que o CNPJ e o fundo da embalagem estão visíveis.");
   }
 }

@@ -236,27 +236,25 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Timeout forçado de 3s para garantir que a tela de carregamento suma
+    // Timeout agressivo de 2.5s para garantir que a aplicação abra mesmo se o Supabase demorar
     const safetyTimer = setTimeout(() => {
         setIsLoadingAuth(false);
-    }, 3000);
+    }, 2500);
 
-    if (!supabase) { setIsLoadingAuth(false); return; }
+    if (!supabase) { 
+      setIsLoadingAuth(false);
+      clearTimeout(safetyTimer);
+      return; 
+    }
 
     const checkSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          if (error.message.toLowerCase().includes('refresh token')) {
-            await supabase.auth.signOut().catch(() => {});
-            setCurrentUser(null);
-          }
-        }
         if (session?.user) {
           await syncUserProfile(session.user); 
         }
       } catch (err) {
-        console.error("Auth init error:", err);
+        console.error("Auth initialization error:", err);
       } finally {
         setIsLoadingAuth(false);
         clearTimeout(safetyTimer);
@@ -357,7 +355,6 @@ const App: React.FC = () => {
     try {
       const raiz = getCnpjRaiz(editFormData.cnpj);
       
-      // LOGICA DE CRUZAMENTO DUPLO (BASE REF + HISTORICO DE LEITURAS)
       const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
       const { data: dbExisting } = await supabase
         .from('product_entries')
@@ -405,7 +402,6 @@ const App: React.FC = () => {
   const handleSetReviewStatus = async (entryId: string, status: 'approved' | 'rejected') => {
     if (!supabase) return;
     
-    // RESTRICAO: APENAS ADMIN PODE APROVAR/REPROVAR
     if (currentUser?.role !== 'admin') {
       addNotification("Acesso Negado", "Apenas administradores da IC podem validar registros para o BI.", "warning");
       return;
@@ -464,7 +460,6 @@ const App: React.FC = () => {
       const extracted = await extractDataFromPhotos(photos);
       const raiz = getCnpjRaiz(extracted.cnpj);
       
-      // LOGICA DE CRUZAMENTO DUPLO (REFERENCIA + LEITURAS EXISTENTES NO BANCO)
       const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
       const { data: dbExisting } = await supabase
         .from('product_entries')
