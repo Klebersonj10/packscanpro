@@ -217,7 +217,7 @@ const App: React.FC = () => {
             cep: e.cep || "N/I",
             telefone: e.telefone || "N/I",
             site: e.site || "N/I",
-            fabricanteEmbalagem: e.fabricante_embalagem || "N/I",
+            fabricante_embalagem: e.fabricante_embalagem || "N/I",
             moldagem: e.moldagem || "N/I",
             formatoEmbalagem: e.formato_embalagem || "N/I",
             tipoEmbalagem: e.tipo_embalagem || "N/I",
@@ -237,27 +237,29 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!supabase) { setIsLoadingAuth(false); return; }
     
-    supabase.auth.getSession().then(({ data: { session }, error }) => { 
+    // Melhoria na recuperação de sessão para atalhos mobile
+    const checkSession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
       if (error) {
         if (error.message.toLowerCase().includes('refresh token')) {
-          supabase.auth.signOut().catch(() => {});
+          await supabase.auth.signOut().catch(() => {});
           setCurrentUser(null);
         }
       }
       if (session?.user) {
-        syncUserProfile(session.user); 
+        await syncUserProfile(session.user); 
       }
-      setIsLoadingAuth(false); 
-    }).catch(err => {
       setIsLoadingAuth(false);
-    });
+    };
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    checkSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         setLists([]);
       } else if (session?.user) {
-        syncUserProfile(session.user);
+        await syncUserProfile(session.user);
       }
       setIsLoadingAuth(false);
     });
@@ -341,7 +343,7 @@ const App: React.FC = () => {
     try {
       const raiz = getCnpjRaiz(editFormData.cnpj);
       
-      // Lógica de Cruzamento Duplo (Base Ref + Base de Leituras)
+      // LOGICA DE CRUZAMENTO DUPLO (BASE REF + HISTORICO DE LEITURAS)
       const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
       const { data: dbExisting } = await supabase
         .from('product_entries')
@@ -371,7 +373,6 @@ const App: React.FC = () => {
         is_new_prospect: isNew
       };
 
-      // Só atualiza ic_comment se for admin
       if (currentUser?.role === 'admin') {
         updatePayload.ic_comment = editFormData.icComment;
       }
@@ -390,9 +391,9 @@ const App: React.FC = () => {
   const handleSetReviewStatus = async (entryId: string, status: 'approved' | 'rejected') => {
     if (!supabase) return;
     
-    // Restrição: Apenas ADMIN pode aprovar/reprovar
+    // RESTRICAO: APENAS ADMIN PODE APROVAR/REPROVAR
     if (currentUser?.role !== 'admin') {
-      addNotification("Acesso Negado", "Apenas administradores podem validar registros para o BI.", "warning");
+      addNotification("Acesso Negado", "Apenas administradores da IC podem validar registros para o BI.", "warning");
       return;
     }
 
@@ -449,7 +450,7 @@ const App: React.FC = () => {
       const extracted = await extractDataFromPhotos(photos);
       const raiz = getCnpjRaiz(extracted.cnpj);
       
-      // Lógica de Cruzamento Duplo em tempo real
+      // LOGICA DE CRUZAMENTO DUPLO (REFERENCIA + LEITURAS EXISTENTES NO BANCO)
       const inRef = cleanRefCnpjs.some(ref => raiz.includes(ref) || ref.includes(raiz));
       const { data: dbExisting } = await supabase
         .from('product_entries')
@@ -981,7 +982,7 @@ const App: React.FC = () => {
                     CONTEUDO: e.data.conteudo,
                     CNPJ: e.data.cnpj[0], 
                     STATUS_BASE: e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado',
-                    FABRICANTE_EMBALAGEM: e.data.fabricanteEmbalagem, 
+                    FABRICANTE_EMBALAGEM: e.data.fabricante_embalagem, 
                     MOLDAGEM: e.data.moldagem, 
                     FORMATO: e.data.formatoEmbalagem,
                     TIPO_EMBALAGEM: e.data.tipoEmbalagem,
@@ -1026,7 +1027,7 @@ const App: React.FC = () => {
                             {e.isNewProspect ? 'Novo' : 'Cadastrado'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-black text-blue-800">{e.data.fabricanteEmbalagem}</td>
+                        <td className="px-6 py-4 font-black text-blue-800">{e.data.fabricante_embalagem}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e.data.moldagem}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e.data.formatoEmbalagem}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e.data.marca}</td>
