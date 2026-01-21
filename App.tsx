@@ -328,14 +328,14 @@ const App: React.FC = () => {
   const handleSetReviewStatus = async (entryId: string, status: 'approved' | 'rejected') => {
     if (!supabase) return;
     if (currentUser?.role !== 'admin') {
-      addNotification("Acesso Negado", "Apenas administradores podem validar registros para o BI.", "warning");
+      addNotification("Acesso Negado", "Apenas administradores podem validar registros para o Relatório.", "warning");
       return;
     }
     try {
       const { error } = await supabase.from('product_entries').update({ review_status: status }).eq('id', entryId);
       if (error) throw error;
       await fetchLists();
-      addNotification("Sucesso", "Status BI atualizado.", "success");
+      addNotification("Sucesso", "Status BI atualizado no Relatório.", "success");
     } catch (err: any) { addNotification("Erro", getErrorMessage(err), "warning"); }
   };
 
@@ -424,7 +424,7 @@ const App: React.FC = () => {
       approvedCount: all.filter(e => e.reviewStatus === 'approved').length,
       rejectedCount: all.filter(e => e.reviewStatus === 'rejected').length,
       pendingCount: all.filter(e => e.reviewStatus === 'pending').length,
-      pdvRanking: Object.entries(pdvRaw).sort((a,b) => (b[1] as any) - (a[1] as any)).slice(0, 5),
+      pdvRanking: Object.entries(pdvRaw).sort((a,b) => (b[1] as any) - (a[1] as any)).slice(0, 10),
       cityRanking: Object.entries(citiesRaw).sort((a,b) => (b[1] as any) - (a[1] as any)).slice(0, 10),
       manufacturerRanking: Object.entries(manufacturersRaw).sort((a,b) => (b[1] as any) - (a[1] as any)).slice(0, 10),
       moldingRanking: Object.entries(moldingRaw).sort((a,b) => (b[1] as any) - (a[1] as any)),
@@ -669,7 +669,7 @@ const App: React.FC = () => {
             {biFilter && (
               <div className="bg-white p-10 rounded-[50px] border border-slate-200 shadow-xl space-y-8 animate-in slide-in-from-top-4 overflow-hidden">
                  <div className="flex items-center justify-between pb-4 border-b border-slate-50">
-                    <h3 className="text-sm font-black uppercase italic tracking-widest flex items-center gap-3"><LayoutList className="w-5 h-5 text-blue-600" /> {biFilter === 'pending' ? 'Itens Pendentes para Validação' : `Itens: ${biFilter.toUpperCase()}`}</h3>
+                    <h3 className="text-sm font-black uppercase italic tracking-widest flex items-center gap-3"><LayoutList className="w-5 h-5 text-blue-600" /> {biFilter === 'pending' ? 'Pendentes para Validação' : `Itens: ${biFilter.toUpperCase()}`}</h3>
                     <button onClick={() => setBiFilter(null)} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"><X className="w-4 h-4" /></button>
                  </div>
                  <div className="grid gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
@@ -680,7 +680,7 @@ const App: React.FC = () => {
                         <div key={e.id} className="p-6 bg-slate-50/50 rounded-[25px] border border-slate-100 flex items-center justify-between hover:bg-white hover:shadow-md transition-all">
                            <div className="flex items-center gap-5 min-w-0">
                               <div className="w-16 h-16 rounded-[20px] overflow-hidden shrink-0 border border-slate-200 shadow-sm"><img src={e.photos[0]} className="w-full h-full object-cover" /></div>
-                              <div className="min-w-0"><p className="text-[12px] font-black uppercase italic text-slate-900 truncate leading-none">{e.data.razaoSocial}</p><p className="text-[9px] font-bold text-slate-400 mt-2">CNPJ: {e.data.cnpj[0]} | {e.data.conteudo}</p><p className="text-[8px] font-black text-blue-500 uppercase mt-1 tracking-widest">{e.data.marca}</p></div>
+                              <div className="min-w-0"><p className="text-[12px] font-black uppercase italic text-slate-900 truncate leading-none">{e.data.razaoSocial}</p><p className="text-[9px] font-bold text-slate-400 mt-2">CNPJ: {e.data.cnpj[0]} | Conteúdo: {e.data.conteudo}</p><p className="text-[8px] font-black text-blue-500 uppercase mt-1 tracking-widest">{e.data.marca}</p></div>
                            </div>
                            <div className="flex gap-2 shrink-0">
                               <button onClick={() => handleSetReviewStatus(e.id, 'rejected')} className="p-4 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all"><ThumbsDown className="w-5 h-5" /></button>
