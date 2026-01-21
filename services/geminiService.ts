@@ -1,9 +1,10 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  const apiKey = process.env.API_KEY || '';
-  const ai = new GoogleGenAI({ apiKey });
+  // Use API key directly from process.env.API_KEY as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const prepareImagePart = (base64: string) => {
@@ -13,33 +14,32 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       return { inlineData: { mimeType, data } };
     };
 
-    const imageParts = photos.map(prepareImagePart);
+    // Filtra fotos válidas para evitar processamento de strings vazias
+    const validPhotos = photos.filter(p => p && p.length > 50);
+    const imageParts = validPhotos.map(prepareImagePart);
+    
     const textPart = { 
-      text: `VOCÊ É UM ANALISTA TÉCNICO DE EMBALAGENS PLÁSTICAS E OCR DE ALTA PRECISÃO.
-      Sua tarefa é analisar estas 3 fotos de um produto e extrair informações cruciais.
-      As imagens podem conter reflexos ou textos pequenos. Examine cada detalhe.
-
-      DADOS PRIORITÁRIOS:
-      1. CNPJ e RAZÃO SOCIAL: Procure no rótulo traseiro ou lateral (Ex: 'Fabricado por: PRODUTOS ALIMENTÍCIOS CRISPETES LTDA', 'CNPJ: 59.279.737/0001-38').
-      2. MOLDAGEM (DEFINIÇÃO TÉCNICA):
-         - Procure na foto que mostra a parte plástica (fundo ou tampa).
-         - Verifique a presença de um pequeno círculo central (Ponto de Injeção).
-         - Se houver ponto de injeção: 'INJETADO'.
-         - Se a superfície for lisa ou com marcas de vácuo nas bordas: 'TERMOFORMADO'.
-      3. MARCA E PRODUTO: Identifique o nome principal (Ex: 'DANNY BALL') e o sabor/tipo.
-      4. CONTEÚDO: Localize o peso ou volume (Ex: '900g', '500ml').
-
-      REGRAS DE RETORNO:
-      - Extraia o máximo possível. Use 'N/I' para o que não for visível.
-      - Retorne estritamente um JSON válido seguindo o schema.
-      - Padronize Moldagem (INJETADO/TERMOFORMADO) e Formato (REDONDO/QUADRADO/RETANGULAR/OVAL).` 
+      text: `VOCÊ É UM ANALISTA TÉCNICO DE EMBALAGENS PLÁSTICAS.
+      Sua missão é extrair dados precisos destas fotos.
+      
+      IMPORTANTE: Se você conseguir extrair informação de apenas uma imagem e não das demais, NÃO FALHE. Forneça todos os dados que conseguir encontrar. Use "N/I" (Não Identificado) para campos impossíveis de determinar.
+      
+      INSTRUÇÃO TÉCNICA DE MOLDAGEM:
+      Analise o fundo da embalagem. 
+      - O que difere TERMOFORMADO de INJETADO é o PONTO DE INJEÇÃO.
+      - INJETADO: Possui obrigatoriamente um ponto central (pequena marca circular ou cicatriz) de onde o plástico fluiu.
+      - TERMOFORMADO: O fundo é liso, sem marcas centrais, podendo conter apenas marcas de vácuo nas bordas.
+      
+      DADOS A EXTRAIR:
+      - Razão Social (Fabricante do produto), CNPJ (todos), Marca, Descrição, Conteúdo (peso/vol).
+      - Fabricante da Embalagem, Moldagem (INJETADO ou TERMOFORMADO), Formato (REDONDO/QUADRADO/RETANGULAR/OVAL), Tipo e Modelo.` 
     };
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Especialista em visão computacional industrial. Extração cirúrgica de dados de rótulos. Foco em ponto de injeção central para moldagem.",
+        systemInstruction: "Retorne estritamente um JSON. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Nunca use 'CILÍNDRICO'. Use 'N/I' para dados ausentes.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -54,7 +54,7 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
             telefone: { type: Type.STRING },
             site: { type: Type.STRING },
             fabricanteEmbalagem: { type: Type.STRING },
-            moldagem: { type: Type.STRING },
+            moldagem: { type: Type.STRING, description: "INJETADO se houver ponto central, TERMOFORMADO se liso" },
             formatoEmbalagem: { type: Type.STRING },
             tipoEmbalagem: { type: Type.STRING },
             modeloEmbalagem: { type: Type.STRING }
@@ -64,13 +64,21 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("A IA não retornou conteúdo.");
+    if (!jsonText) throw new Error("A IA não retornou dados.");
     
     const raw = JSON.parse(jsonText.trim());
     const sanitize = (val: any) => (val === null || val === undefined || val === "" || val === "N/I") ? "N/I" : String(val);
 
     let formato = sanitize(raw.formatoEmbalagem).toUpperCase();
-    if (formato.includes("CILIN")) formato = "REDONDO";
+    if (formato.includes("CILIN") || formato.includes("CILÍN")) {
+      formato = "REDONDO";
+    }
+
+    // Reforço da lógica de moldagem caso o modelo falhe na normalização
+    let moldagem = sanitize(raw.moldagem).toUpperCase();
+    if (moldagem.includes("INJET")) moldagem = "INJETADO";
+    else if (moldagem.includes("TERMO")) moldagem = "TERMOFORMADO";
+    else moldagem = "TERMOFORMADO"; // Default mais comum
 
     return {
       razaoSocial: sanitize(raw.razaoSocial).toUpperCase(),
@@ -83,18 +91,31 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       telefone: sanitize(raw.telefone).toUpperCase(),
       site: sanitize(raw.site).toLowerCase(),
       fabricanteEmbalagem: sanitize(raw.fabricanteEmbalagem).toUpperCase(),
-      moldagem: sanitize(raw.moldagem || "TERMOFORMADO").toUpperCase(),
+      moldagem: moldagem,
       formatoEmbalagem: formato,
+      // Fixed: Property access should match the schema (camelCase)
       tipoEmbalagem: sanitize(raw.tipoEmbalagem || "POTE").toUpperCase(),
       modeloEmbalagem: sanitize(raw.modeloEmbalagem).toUpperCase(),
       dataLeitura: new Date().toLocaleString('pt-BR')
     };
   } catch (error) {
-    console.error("Gemini Vision Error:", error);
+    console.error("Erro no Gemini Service:", error);
+    // Fallback para não quebrar a aplicação, retornando o que for possível
     return {
-      razaoSocial: "N/I", cnpj: ["N/I"], marca: "N/I", descricaoProduto: "N/I", conteudo: "N/I",
-      endereco: "N/I", cep: "N/I", telefone: "N/I", site: "N/I", fabricanteEmbalagem: "N/I",
-      moldagem: "TERMOFORMADO", formatoEmbalagem: "REDONDO", tipoEmbalagem: "POTE", modeloEmbalagem: "N/I",
+      razaoSocial: "ERRO NA EXTRAÇÃO - TENTE NOVAMENTE",
+      cnpj: ["N/I"],
+      marca: "N/I",
+      descricaoProduto: "N/I",
+      conteudo: "N/I",
+      endereco: "N/I",
+      cep: "N/I",
+      telefone: "N/I",
+      site: "N/I",
+      fabricanteEmbalagem: "N/I",
+      moldagem: "N/I",
+      formatoEmbalagem: "N/I",
+      tipoEmbalagem: "N/I",
+      modeloEmbalagem: "N/I",
       dataLeitura: new Date().toLocaleString('pt-BR')
     };
   }
