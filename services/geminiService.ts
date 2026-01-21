@@ -15,34 +15,31 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
 
     const imageParts = photos.map(prepareImagePart);
     const textPart = { 
-      text: `Analise cuidadosamente as 3 fotos da embalagem (Frente, Verso/Dados e Fundo). 
-      Extraia o máximo de informações possível, mesmo que parciais. NÃO aborte se faltar algo.
-      
-      INSTRUÇÃO TÉCNICA DE MOLDAGEM:
-      - Examine a foto do FUNDO (peça plástica).
-      - Procure por um pequeno ponto circular central (marca de entrada da resina).
-      - Se houver ponto central: Moldagem = 'INJETADO'.
-      - Se o fundo for liso, sem ponto central, com marcas de borda de corte: Moldagem = 'TERMOFORMADO'.
+      text: `VOCÊ É UM ANALISTA TÉCNICO DE EMBALAGENS PLÁSTICAS E OCR DE ALTA PRECISÃO.
+      Sua tarefa é analisar estas 3 fotos de um produto e extrair informações cruciais.
+      As imagens podem conter reflexos ou textos pequenos. Examine cada detalhe.
 
-      DADOS A EXTRAIR:
-      - Razão Social (Fabricante do produto)
-      - CNPJ (Formato 00.000.000/0000-00)
-      - Marca (Nome de maior destaque no rótulo)
-      - Descrição do Produto (Ex: Bebida Láctea, Doce)
-      - Conteúdo Líquido (Ex: 170g, 500ml)
-      - Endereço, CEP, Telefone e Site
-      - Fabricante da Embalagem Plástica (Relevo no fundo: PRAFESTA, THERMOVAC, etc.)
-      - Moldagem: INJETADO ou TERMOFORMADO (Siga a instrução técnica acima).
-      - Formato: REDONDO, QUADRADO, RETANGULAR ou OVAL. (Nunca use cilíndrico).
-      - Tipo: POTE, TAMPA, BALDE, FRASCO.
-      - Modelo: Ref. técnica ou modelo da peça.` 
+      DADOS PRIORITÁRIOS:
+      1. CNPJ e RAZÃO SOCIAL: Procure no rótulo traseiro ou lateral (Ex: 'Fabricado por: PRODUTOS ALIMENTÍCIOS CRISPETES LTDA', 'CNPJ: 59.279.737/0001-38').
+      2. MOLDAGEM (DEFINIÇÃO TÉCNICA):
+         - Procure na foto que mostra a parte plástica (fundo ou tampa).
+         - Verifique a presença de um pequeno círculo central (Ponto de Injeção).
+         - Se houver ponto de injeção: 'INJETADO'.
+         - Se a superfície for lisa ou com marcas de vácuo nas bordas: 'TERMOFORMADO'.
+      3. MARCA E PRODUTO: Identifique o nome principal (Ex: 'DANNY BALL') e o sabor/tipo.
+      4. CONTEÚDO: Localize o peso ou volume (Ex: '900g', '500ml').
+
+      REGRAS DE RETORNO:
+      - Extraia o máximo possível. Use 'N/I' para o que não for visível.
+      - Retorne estritamente um JSON válido seguindo o schema.
+      - Padronize Moldagem (INJETADO/TERMOFORMADO) e Formato (REDONDO/QUADRADO/RETANGULAR/OVAL).` 
     };
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um analista de embalagens. Extraia os dados e retorne stritamente um JSON. Caso não localize algum dado, use 'N/I'. Padronize Moldagem (INJETADO/TERMOFORMADO) e Formato (REDONDO/QUADRADO/RETANGULAR/OVAL).",
+        systemInstruction: "Especialista em visão computacional industrial. Extração cirúrgica de dados de rótulos. Foco em ponto de injeção central para moldagem.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -93,8 +90,7 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       dataLeitura: new Date().toLocaleString('pt-BR')
     };
   } catch (error) {
-    console.error("Gemini Error:", error);
-    // Em caso de erro, retorna um objeto vazio estruturado para não quebrar a aplicação
+    console.error("Gemini Vision Error:", error);
     return {
       razaoSocial: "N/I", cnpj: ["N/I"], marca: "N/I", descricaoProduto: "N/I", conteudo: "N/I",
       endereco: "N/I", cep: "N/I", telefone: "N/I", site: "N/I", fabricanteEmbalagem: "N/I",

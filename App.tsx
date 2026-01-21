@@ -250,15 +250,27 @@ const App: React.FC = () => {
     setAuthError(null);
     try {
       if (isLoginView) {
-        const { error } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
+        const { error } = await supabase.auth.signInWithPassword({ 
+          email: authForm.email, 
+          password: authForm.password 
+        });
         if (error) throw error;
       } else {
-        const { error } = await supabase.auth.signUp({ email: authForm.email, password: authForm.password, options: { data: { name: authForm.name } } });
+        const { error } = await supabase.auth.signUp({ 
+          email: authForm.email, 
+          password: authForm.password, 
+          options: { data: { name: authForm.name } } 
+        });
         if (error) throw error;
         addNotification("Sucesso", "Conta criada! Verifique seu e-mail.", "success");
         setIsLoginView(true);
       }
-    } catch (err: any) { setAuthError(getErrorMessage(err)); } finally { setIsLoadingAuth(false); }
+    } catch (err: any) { 
+      console.error("Auth Error:", err);
+      setAuthError(getErrorMessage(err)); 
+    } finally { 
+      setIsLoadingAuth(false); 
+    }
   };
 
   const handleLogout = async () => {
@@ -446,7 +458,9 @@ const App: React.FC = () => {
             <input required type="password" placeholder="SENHA" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className="w-full bg-slate-50 border p-4 rounded-2xl text-sm font-bold uppercase outline-none"/>
             <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-transform">Acessar Sistema</button>
           </form>
-          <button onClick={() => setIsLoginView(!isLoginView)} className="w-full mt-6 text-blue-600 font-bold text-[10px] uppercase">{isLoginView ? 'Solicitar Acesso Master' : 'Já possui conta? Entrar'}</button>
+          <button onClick={() => setIsLoginView(!isLoginView)} className="w-full mt-6 text-blue-600 font-bold text-[10px] uppercase">
+            {isLoginView ? 'Solicitar Acesso' : 'Já possui conta? Entrar'}
+          </button>
           {authError && <p className="mt-4 text-rose-500 text-[10px] font-black uppercase">{authError}</p>}
         </div>
       </div>
@@ -521,7 +535,7 @@ const App: React.FC = () => {
                 {currentList.entries.map(entry => (
                   <div key={entry.id} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden">
                      <div className={`absolute top-0 right-10 px-6 py-2 rounded-b-2xl text-[10px] font-black uppercase italic tracking-widest shadow-sm z-10 ${entry.isNewProspect ? 'bg-amber-400 text-white' : 'bg-blue-600 text-white'}`}>
-                       {entry.isNewProspect ? 'Novo Prospect' : 'Base Cadastrada'}
+                       {entry.isNewProspect ? 'Novo Prospect' : 'Já cadastrado na Base'}
                      </div>
 
                      <div className="flex flex-col lg:flex-row gap-8 mt-4">
