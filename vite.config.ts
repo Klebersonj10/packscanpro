@@ -7,11 +7,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY || ''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || ''),
       'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || env.VITE_SUPABASE_URL || 'https://mmqjtswnezofrklgaowy.supabase.co'),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Vwp32EANk8gO3SplAvvEnw_zO4lZnsV'),
-      'process.env.NODE_ENV': JSON.stringify(mode),
-      'global': 'window'
+      'process.env.NODE_ENV': JSON.stringify(mode)
     },
     build: {
       outDir: 'dist',

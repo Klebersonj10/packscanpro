@@ -3,8 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  // Use API key directly from process.env.API_KEY as per guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Use API key directly from process.env.GEMINI_API_KEY as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   try {
     const prepareImagePart = (base64: string) => {
@@ -36,7 +36,7 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-pro-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
         systemInstruction: "Retorne estritamente um JSON. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Nunca use 'CILÍNDRICO'. Use 'N/I' para dados ausentes.",
@@ -66,7 +66,9 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const jsonText = response.text;
     if (!jsonText) throw new Error("A IA não retornou dados.");
     
-    const raw = JSON.parse(jsonText.trim());
+    // Remove markdown code blocks if present
+    const cleanJson = jsonText.replace(/```json\n?|```/g, "").trim();
+    const raw = JSON.parse(cleanJson);
     const sanitize = (val: any) => (val === null || val === undefined || val === "" || val === "N/I") ? "N/I" : String(val);
 
     let formato = sanitize(raw.formatoEmbalagem).toUpperCase();
@@ -82,7 +84,7 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
 
     return {
       razaoSocial: sanitize(raw.razaoSocial).toUpperCase(),
-      cnpj: Array.isArray(raw.cnpj) ? raw.cnpj.map(c => sanitize(c)) : [sanitize(raw.cnpj)].filter(c => c !== "N/I"),
+      cnpj: Array.isArray(raw.cnpj) ? raw.cnpj.map((c: any) => sanitize(c)) : [sanitize(raw.cnpj)].filter(c => c !== "N/I"),
       marca: sanitize(raw.marca).toUpperCase(),
       descricaoProduto: sanitize(raw.descricaoProduto).toUpperCase(),
       conteudo: sanitize(raw.conteudo).toUpperCase(),

@@ -9,11 +9,11 @@ import {
   Building2, ImageIcon, FileText, ClipboardList, X, Maximize2, Mail, ThumbsUp, ThumbsDown,
   Trash2, Clock, MessageSquare, CheckCircle, DatabaseZap
 } from 'lucide-react';
-import { InspectionList, ProductEntry, ListStatus, User, ExtractedData, AppNotification } from './types.ts';
-import { SmartScanner } from './components/CameraCapture.tsx';
-import { ManualUpload } from './components/ManualUpload.tsx';
-import { extractDataFromPhotos } from './services/geminiService.ts';
-import { supabase } from './services/supabase.ts';
+import { InspectionList, ProductEntry, ListStatus, User, ExtractedData, AppNotification } from './types';
+import { SmartScanner } from './components/CameraCapture';
+import { ManualUpload } from './components/ManualUpload';
+import { extractDataFromPhotos } from './services/geminiService';
+import { supabase } from './services/supabase';
 import * as XLSX from 'xlsx';
 
 const getErrorMessage = (err: any): string => {
@@ -237,10 +237,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!supabase) { setIsLoadingAuth(false); return; }
     
-    supabase.auth.getSession().then(({ data: { session }, error }) => { 
+    supabase?.auth.getSession().then(({ data: { session }, error }) => { 
       if (error) {
         if (error.message.toLowerCase().includes('refresh token')) {
-          supabase.auth.signOut().catch(() => {});
+          supabase?.auth.signOut().catch(() => {});
           setCurrentUser(null);
         }
       }
@@ -502,7 +502,7 @@ const App: React.FC = () => {
     const all = lists.flatMap(l => l.entries || []);
     const total = all.length;
     
-    let filteredEntriesByBI = [];
+    let filteredEntriesByBI: ProductEntry[] = [];
     if (biFilter === 'approved' || biFilter === 'rejected' || biFilter === 'pending') {
       filteredEntriesByBI = all.filter(e => e.reviewStatus === biFilter);
     } else if (biFilter === 'new') {
@@ -903,7 +903,7 @@ const App: React.FC = () => {
                     <div key={i} className="space-y-3">
                       <div className="flex justify-between font-black uppercase italic text-[10px]">
                         <span className="text-slate-900 truncate max-w-[200px]">{name}</span>
-                        <span className="text-blue-600">{count}</span>
+                        <span className="text-blue-600">{count as any}</span>
                       </div>
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div 
@@ -925,7 +925,7 @@ const App: React.FC = () => {
                     <div key={i} className="space-y-4">
                       <div className="flex justify-between font-black uppercase italic text-[10px]">
                         <span className="text-slate-900">{name}</span>
-                        <span className="text-slate-400">{count}</span>
+                        <span className="text-slate-400">{count as any}</span>
                       </div>
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div 
@@ -948,7 +948,7 @@ const App: React.FC = () => {
                     <div key={i} className="space-y-3">
                       <div className="flex justify-between font-black uppercase italic text-[10px]">
                         <span className="text-slate-900 truncate max-w-[200px]">{name}</span>
-                        <span className="text-emerald-600">{count}</span>
+                        <span className="text-emerald-600">{count as any}</span>
                       </div>
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div 
@@ -972,7 +972,7 @@ const App: React.FC = () => {
                     <div key={i} className="space-y-3">
                       <div className="flex justify-between font-black uppercase italic text-[10px]">
                         <span className="text-slate-900 truncate max-w-[200px]">{name}</span>
-                        <span className="text-orange-600">{count}</span>
+                        <span className="text-orange-600">{count as any}</span>
                       </div>
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div 
