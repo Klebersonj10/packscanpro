@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    base: './',
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || ''),
       'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || env.VITE_SUPABASE_URL || 'https://mmqjtswnezofrklgaowy.supabase.co'),

@@ -10,6 +10,9 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@google/genai": "^1.34.0",
     "@supabase/supabase-js": "^2.45.4",
