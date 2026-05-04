@@ -658,7 +658,7 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex-grow">
                            <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
-                              <div className="flex-grow pr-4 overflow-hidden">
+                              <div className="flex-grow pr-4 min-w-0">
                                 {editingEntryId === entry.id ? (
                                   <div className="space-y-3">
                                     <input className="font-black text-xl uppercase italic text-slate-900 bg-slate-50 border p-3 rounded-xl w-full" value={editFormData?.razaoSocial} onChange={e => setEditFormData(prev => prev ? {...prev, razaoSocial: e.target.value} : null)} placeholder="RAZÃO SOCIAL" />
@@ -757,7 +757,7 @@ const App: React.FC = () => {
                            </div>
                            
                            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
-                             <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-2 min-w-0">
                                <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase italic tracking-widest ${entry.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-600' : entry.reviewStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
                                  Status BI: {entry.reviewStatus === 'pending' ? 'Pendente Analise' : entry.reviewStatus === 'approved' ? 'Aprovado IC' : 'Reprovado IC'}
                                </span>
