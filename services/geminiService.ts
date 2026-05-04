@@ -21,16 +21,26 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const imageParts = validPhotos.map(prepareImagePart);
     
     const textPart = { 
-      text: `Extraia os dados técnicos desta embalagem plástica. 
-      Identifique se é INJETADO (ponto central no fundo) ou TERMOFORMADO (fundo liso).
-      Retorne os dados no formato JSON solicitado.` 
+      text: `VOCÊ É UM ESPECIALISTA EM OCR TÉCNICO DE EMBALAGENS.
+      Sua missão é extrair dados com 100% de precisão destas fotos.
+      
+      FOCO EXTREMO EM:
+      1. CNPJs: Procure por sequências de 14 dígitos. Frequentemente perto das palavras "Fabricado por", "Produzido por", "Distribuído por" ou "C.N.P.J".
+      2. RAZÃO SOCIAL: Nome completo da empresa fabricante do produto conteúdo.
+      3. FABRICANTE DA EMBALAGEM: Verifique o fundo do pote para logo de fabricantes (ex: Fibrasa, Berry, Prafesta).
+      
+      CRITÉRIO DE MOLDAGEM:
+      - INJETADO: Ponto circular central de injeção no fundo.
+      - TERMOFORMADO: Fundo liso, sem ponto central, marcas de vácuo.
+      
+      Retorne APENAS o JSON.` 
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-pro",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um extrator de dados JSON especializado em rótulos. Retorne APENAS o objeto JSON, sem explicações. Padronize Moldagem para INJETADO/TERMOFORMADO e Formato para REDONDO/QUADRADO/RETANGULAR/OVAL. Use 'N/I' para dados ausentes.",
+        systemInstruction: "Retorne estritamente um JSON válido. Padronize Moldagem para INJETADO/TERMOFORMADO. Formatos válidos: REDONDO, QUADRADO, RETANGULAR, OVAL. Use 'N/I' para dados ausentes.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,

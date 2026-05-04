@@ -35,6 +35,7 @@ export interface ExtractedData {
   tipoEmbalagem: string;    
   modeloEmbalagem: string;  
   dataLeitura: string;
+  isPotentialProject?: boolean;
 }
 
 export interface ProductEntry {
@@ -42,11 +43,12 @@ export interface ProductEntry {
   photos: string[];
   data: ExtractedData;
   isNewProspect: boolean; 
+  isPotentialProject: boolean;
   checkedAt: string;
   reviewStatus: 'approved' | 'rejected' | 'pending'; 
   inspectorId: string;
   listId: string;
-  icComment?: string; // Novo campo de comentário da Inteligência Comercial
+  icComment?: string;
 }
 
 export type ListStatus = 'executing' | 'waiting_ic' | 'approved' | 'partial' | 'rejected';
