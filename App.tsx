@@ -656,7 +656,7 @@ const App: React.FC = () => {
                            </div>
                            <div className="flex gap-2">{entry.photos.map((img, idx) => (<button key={idx} onClick={() => setActivePhotos({...activePhotos, [entry.id]: idx})} className={`flex-grow h-14 rounded-xl overflow-hidden border-2 transition-all ${(activePhotos[entry.id] || 0) === idx ? 'border-blue-500' : 'border-transparent opacity-60'}`}><img src={img} className="w-full h-full object-cover" /></button>))}</div>
                         </div>
-                        <div className="flex-grow">
+                        <div className="flex-grow min-w-0">
                            <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
                               <div className="flex-grow pr-4 min-w-0">
                                 {editingEntryId === entry.id ? (
