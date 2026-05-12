@@ -657,8 +657,8 @@ const App: React.FC = () => {
                            <div className="flex gap-2">{entry.photos.map((img, idx) => (<button key={idx} onClick={() => setActivePhotos({...activePhotos, [entry.id]: idx})} className={`flex-grow h-14 rounded-xl overflow-hidden border-2 transition-all ${(activePhotos[entry.id] || 0) === idx ? 'border-blue-500' : 'border-transparent opacity-60'}`}><img src={img} className="w-full h-full object-cover" /></button>))}</div>
                         </div>
                         <div className="flex-grow min-w-0">
-                           <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
-                              <div className="flex-grow pr-4 min-w-0">
+                           <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4 gap-4">
+                              <div className="flex-grow min-w-0 pr-2">
                                 {editingEntryId === entry.id ? (
                                   <div className="space-y-3">
                                     <input className="font-black text-xl uppercase italic text-slate-900 bg-slate-50 border p-3 rounded-xl w-full" value={editFormData?.razaoSocial} onChange={e => setEditFormData(prev => prev ? {...prev, razaoSocial: e.target.value} : null)} placeholder="RAZÃO SOCIAL" />
@@ -1036,6 +1036,7 @@ const App: React.FC = () => {
                     CONTEUDO: e.data.conteudo,
                     CNPJ: e.data.cnpj[0], 
                     STATUS_BASE: e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado',
+                    NOVO_PROJETO: e.isPotentialProject ? 'Sim' : 'Não',
                     FABRICANTE_EMBALAGEM: e.data.fabricanteEmbalagem, 
                     MOLDAGEM: e.data.moldagem, 
                     FORMATO: e.data.formatoEmbalagem,
@@ -1051,7 +1052,7 @@ const App: React.FC = () => {
                 <table className="w-full text-left text-[11px] whitespace-nowrap">
                   <thead className="bg-slate-900 text-white uppercase italic">
                     <tr>
-                      {["Data", "PDV", "Cidade", "Razão Social", "CNPJ", "Base", "Fabricante Peça", "Moldagem", "Formato", "Status IC"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}
+                      {["Data", "PDV", "Cidade", "Razão Social", "CNPJ", "Base", "Projeto", "Fabricante Peça", "Moldagem", "Formato", "Status IC"].map(h => <th key={h} className="px-6 py-5 font-black tracking-widest">{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -1068,12 +1069,19 @@ const App: React.FC = () => {
                         <td className="px-6 py-4 text-slate-400 font-bold italic">{e.checkedAt.split(' ')[0]}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.establishment}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.city}</td>
-                        <td className="px-6 py-4 font-black text-slate-900 italic uppercase">{e.data.razaoSocial}</td>
+                        <td className="px-6 py-4 font-black text-slate-900 italic uppercase min-w-[200px] truncate max-w-[300px]">{e.data.razaoSocial}</td>
                         <td className="px-6 py-4 font-bold text-slate-500">{e.data.cnpj[0]}</td>
                         <td className="px-6 py-4">
                           <span className={`px-3 py-1 rounded-full font-black text-[8px] uppercase ${e.isNewProspect ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                             {e.isNewProspect ? 'Novo' : 'Base'}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {e.isPotentialProject && (
+                            <span className="px-3 py-1 rounded-full font-black text-[8px] uppercase bg-purple-100 text-purple-700 flex items-center gap-1 w-fit">
+                              <Sparkles className="w-2 h-2" /> Sim
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 font-black text-blue-800">{e.data.fabricanteEmbalagem}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e.data.moldagem}</td>

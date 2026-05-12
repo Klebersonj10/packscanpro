@@ -21,26 +21,27 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const imageParts = validPhotos.map(prepareImagePart);
     
     const textPart = { 
-      text: `VOCÊ É UM ESPECIALISTA EM OCR TÉCNICO DE EMBALAGENS.
-      Sua missão é extrair dados com 100% de precisão destas fotos.
+      text: `VOCÊ É UM ESPECIALISTA EM OCR E ANÁLISE TÉCNICA DE EMBALAGENS PLÁSTICAS.
+      Sua missão é extrair dados com precisão total destas fotos.
       
-      FOCO EXTREMO EM:
-      1. CNPJs: Procure por sequências de 14 dígitos. Frequentemente perto das palavras "Fabricado por", "Produzido por", "Distribuído por" ou "C.N.P.J".
-      2. RAZÃO SOCIAL: Nome completo da empresa fabricante do produto conteúdo.
-      3. FABRICANTE DA EMBALAGEM: Verifique o fundo do pote para logo de fabricantes (ex: Fibrasa, Berry, Prafesta).
+      FOCO EM EXTRAÇÃO:
+      1. CNPJs: Procure por sequências de 14 dígitos (ex: 00.000.000/0000-00).
+      2. RAZÃO SOCIAL: Nome da empresa fabricante (ex: CREMOLAP FRIOS E LATICÍNIOS LTDA).
+      3. FABRICANTE DA EMBALAGEM: Identifique logos ou nomes gravados no plástico (ex: Brasilpack, Fibrasa, Berry).
       
-      CRITÉRIO DE MOLDAGEM:
-      - INJETADO: Ponto circular central de injeção no fundo.
-      - TERMOFORMADO: Fundo liso, sem ponto central, marcas de vácuo.
+      REGRAS TÉCNICAS DE MOLDAGEM (DIFERENCIAÇÃO FUNDAMENTAL):
+      Analise o fundo (lado externo) da embalagem nas fotos:
+      1. INJETADO: Verifique se existe um PONTO DE INJEÇÃO central (uma pequena marca circular, relevo ou cicatriz exata no centro do fundo, de onde o plástico fluiu para o molde). Se houver esse ponto central, classifique obrigatoriamente como INJETADO.
+      2. TERMOFORMADO: O fundo é liso, sem marcas de ponto central. Pode ter marcas de vácuo, mas nunca o ponto central de injeção.
       
-      Retorne APENAS o JSON.` 
+      Retorne os dados estritamente em JSON.` 
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Retorne estritamente um JSON válido. Padronize Moldagem para INJETADO/TERMOFORMADO. Formatos válidos: REDONDO, QUADRADO, RETANGULAR, OVAL. Use 'N/I' para dados ausentes.",
+        systemInstruction: "Você é um assistente que extrai dados de embalagens plásticas e retorna um JSON válido. Padronize Moldagem para INJETADO/TERMOFORMADO. Formatos: REDONDO, QUADRADO, RETANGULAR, OVAL. Se não encontrar algo, use 'N/I'.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
