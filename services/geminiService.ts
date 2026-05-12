@@ -38,10 +38,10 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash-latest",
+      model: "gemini-1.5-flash",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um assistente que extrai dados de embalagens plásticas e retorna um JSON válido. Padronize Moldagem para INJETADO/TERMOFORMADO. Formatos: REDONDO, QUADRADO, RETANGULAR, OVAL. Se não encontrar algo, use 'N/I'.",
+        systemInstruction: "Você é um especialista em embalagens. Extraia dados em JSON. MOLDAGEM: Se houver um ponto/marca circular no centro exato do fundo, é INJETADO. Se o fundo for totalmente liso, é TERMOFORMADO. Formatos: REDONDO, QUADRADO, RETANGULAR, OVAL.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
