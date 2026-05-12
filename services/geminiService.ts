@@ -42,27 +42,28 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     
     const textPart = { 
       text: `VOCÊ É UM ANALISTA TÉCNICO EXPERT EM EMBALAGENS PLÁSTICAS.
-      Sua missão é extrair dados com PRECISÃO TOTAL destas fotos.
+      Sua missão é realizar OCR e análise técnica das fotos para extrair dados estruturados.
       
-      CRITÉRIO MANDATÓRIO DE MOLDAGEM (DIFERENCIAÇÃO TÉCNICA):
-      Você deve olhar o fundo EXTERNO da embalagem (a base do pote/copo):
-      
-      1. INJETADO: Procure obrigatoriamente por um "PONTO DE INJEÇÃO" CENTRAL. É uma pequena marca circular, relevo, cicatriz ou rebarba exata no centro geométrico do fundo. Se houver esse ponto central, classifique como INJETADO.
-      
-      2. TERMOFORMADO: O fundo é TOTALMENTE LISO no centro exato. Pode haver logotipos (ex: Fibrasa), símbolos de reciclagem (triângulo PET/PP) ou textos gravados na base, mas se NÃO houver o ponto central de injeção, classifique como TERMOFORMADO.
+      CRITÉRIO MANDATÓRIO PARA MOLDAGEM (DIFERENCIAÇÃO TÉCNICA):
+      Analise o fundo externo (a base) do pote/copo nas fotos:
+      1. INJETADO: Verifique se existe um "PONTO DE INJEÇÃO" CENTRAL. É uma pequena marca circular, cicatriz ou rebarba exata no centro geométrico do fundo. Se houver esse ponto central, classifique OBRIGATORIAMENTE como INJETADO.
+      2. TERMOFORMADO: O fundo é TOTALMENTE LISO no centro geométrico. Pode ter logotipos (ex: Fibrasa), símbolos de reciclagem ou números gravados, mas se NÃO houver o ponto central de injeção, classifique como TERMOFORMADO.
       
       DADOS A EXTRAIR:
-      - CNPJs (sequências de 14 dígitos), Razão Social (fabricante do conteúdo), Marca, Descrição, Conteúdo.
-      - Fabricante da Embalagem (ex: Fibrasa, Brasilpack, Berry), Moldagem, Formato (REDONDO, OVAL, QUADRADO, RETANGULAR).
+      - CNPJ: Procure por sequências de 14 dígitos (fabricante do conteúdo ou da embalagem).
+      - RAZÃO SOCIAL: Nome da empresa fabricante do produto conteúdo.
+      - MARCA: Nome comercial do produto.
+      - FABRICANTE DA EMBALAGEM: Nome gravado na base do plástico (ex: Fibrasa, Brasilpack, Berry).
+      - FORMATO: REDONDO, OVAL, QUADRADO, RETANGULAR.
       
       Retorne estritamente em JSON.` 
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um especialista em OCR e análise técnica de embalagens. Extraia dados em JSON. Use 'N/I' para campos não identificados. Lembre-se: INJETADO tem ponto central, TERMOFORMADO tem centro liso.",
+        systemInstruction: "Você é um técnico especialista em embalagens plásticas. Extraia dados em formato JSON baseado nas imagens fornecidas. Use 'N/I' para campos não identificados. Lembre-se: moldagem INJETADA tem ponto central, TERMOFORMADA tem centro liso.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
