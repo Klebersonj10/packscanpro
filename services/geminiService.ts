@@ -3,8 +3,29 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from "../types";
 
 export async function extractDataFromPhotos(photos: string[]): Promise<ExtractedData> {
-  // Use API key directly from process.env.GEMINI_API_KEY as per guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
+    console.error("ERRO: GEMINI_API_KEY não configurada corretamente.");
+    return {
+      razaoSocial: "ERRO: CHAVE API NÃO CONFIGURADA NO VERCEL",
+      cnpj: ["N/I"],
+      marca: "N/I",
+      descricaoProduto: "N/I",
+      conteudo: "N/I",
+      endereco: "N/I",
+      cep: "N/I",
+      telefone: "N/I",
+      site: "N/I",
+      fabricanteEmbalagem: "N/I",
+      moldagem: "N/I",
+      formatoEmbalagem: "N/I",
+      tipoEmbalagem: "N/I",
+      modeloEmbalagem: "N/I",
+      dataLeitura: new Date().toLocaleString('pt-BR')
+    };
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
     const prepareImagePart = (base64: string) => {
@@ -14,7 +35,6 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       return { inlineData: { mimeType, data } };
     };
 
-    // Filtra fotos válidas para evitar processamento de strings vazias
     const validPhotos = photos.filter(p => p && p.length > 50);
     if (validPhotos.length === 0) throw new Error("Nenhuma foto válida capturada.");
     
@@ -24,26 +44,22 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
       text: `VOCÊ É UM ANALISTA TÉCNICO DE EMBALAGENS PLÁSTICAS.
       Sua missão é extrair dados com PRECISÃO TOTAL destas fotos.
       
-      CRITÉRIO DE MOLDAGEM (DIFERENÇA CRITICAL):
-      - INJETADO: Observe o fundo externo. Se houver um ponto central circular (marca de injeção), É INJETADO.
-      - TERMOFORMADO: Se o fundo for liso, sem ponto central, É TERMOFORMADO.
+      DIFERENCIAÇÃO DE MOLDAGEM (DADOS TÉCNICOS CRUCIAIS):
+      - INJETADO: Observe o fundo externo da embalagem. Procure obrigatoriamente por um PONTO CENTRAL (uma pequena marca circular, relevo ou cicatriz exata no centro do fundo, de onde o plástico fluiu para o molde). Se houver esse ponto central, classifique obrigatoriamente como INJETADO.
+      - TERMOFORMADO: Se o fundo for totalmente liso no centro, sem marca de injeção, classifique como TERMOFORMADO.
       
       DADOS A EXTRAIR:
-      - CNPJs (todos encontrados), Razão Social, Marca, Descrição do Produto, Conteúdo.
+      - CNPJs (procure por 14 dígitos), Razão Social, Marca, Descrição do Produto, Conteúdo.
       - Fabricante da Embalagem, Moldagem, Formato (REDONDO, OVAL, QUADRADO, RETANGULAR).
       
       Retorne apenas o JSON.` 
     };
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.error("ERRO: GEMINI_API_KEY não configurada no ambiente.");
-    }
-
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: "Você é um especialista em embalagens. Extraia dados em JSON. MOLDAGEM: Se houver um ponto/marca circular no centro exato do fundo, é INJETADO. Se o fundo for totalmente liso, é TERMOFORMADO. Formatos: REDONDO, QUADRADO, RETANGULAR, OVAL.",
+        systemInstruction: "Você é um técnico especialista em embalagens plásticas. Extraia dados em formato JSON. Use 'N/I' para campos não identificados.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
