@@ -676,7 +676,7 @@ const App: React.FC = () => {
                                   </div>
                                 ) : (
                                   <div className="min-w-0">
-                                    <h4 className="font-black text-xl uppercase italic leading-none text-slate-900 truncate">{entry.data.razaoSocial}</h4>
+                                    <h4 className="font-black text-xl uppercase italic leading-none text-slate-900 truncate pr-2" title={entry.data.razaoSocial}>{entry.data.razaoSocial}</h4>
                                     <p className="text-[9px] font-black text-slate-400 uppercase mt-2 italic tracking-widest truncate">CNPJ: {entry.data.cnpj[0] || 'N/I'}</p>
                                   </div>
                                 )}
@@ -1069,11 +1069,11 @@ const App: React.FC = () => {
                         <td className="px-6 py-4 text-slate-400 font-bold italic">{e.checkedAt.split(' ')[0]}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.establishment}</td>
                         <td className="px-6 py-4 font-bold text-slate-600">{e._list.city}</td>
-                        <td className="px-6 py-4 font-black text-slate-900 italic uppercase min-w-[200px] truncate max-w-[300px]">{e.data.razaoSocial}</td>
+                        <td className="px-6 py-4 font-black text-slate-900 italic uppercase min-w-[200px] max-w-[300px] overflow-hidden text-ellipsis" title={e.data.razaoSocial}>{e.data.razaoSocial}</td>
                         <td className="px-6 py-4 font-bold text-slate-500">{e.data.cnpj[0]}</td>
                         <td className="px-6 py-4">
                           <span className={`px-3 py-1 rounded-full font-black text-[8px] uppercase ${e.isNewProspect ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                            {e.isNewProspect ? 'Novo' : 'Base'}
+                            {e.isNewProspect ? 'Novo Prospect' : 'Já Cadastrado'}
                           </span>
                         </td>
                         <td className="px-6 py-4">

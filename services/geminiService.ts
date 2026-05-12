@@ -21,21 +21,23 @@ export async function extractDataFromPhotos(photos: string[]): Promise<Extracted
     const imageParts = validPhotos.map(prepareImagePart);
     
     const textPart = { 
-      text: `VOCÊ É UM ESPECIALISTA EM OCR E ANÁLISE TÉCNICA DE EMBALAGENS PLÁSTICAS.
-      Sua missão é extrair dados com precisão total destas fotos.
+      text: `VOCÊ É UM ANALISTA TÉCNICO DE EMBALAGENS PLÁSTICAS.
+      Sua missão é extrair dados com PRECISÃO TOTAL destas fotos.
       
-      FOCO EM EXTRAÇÃO:
-      1. CNPJs: Procure por sequências de 14 dígitos (ex: 00.000.000/0000-00).
-      2. RAZÃO SOCIAL: Nome da empresa fabricante (ex: CREMOLAP FRIOS E LATICÍNIOS LTDA).
-      3. FABRICANTE DA EMBALAGEM: Identifique logos ou nomes gravados no plástico (ex: Brasilpack, Fibrasa, Berry).
+      CRITÉRIO DE MOLDAGEM (DIFERENÇA CRITICAL):
+      - INJETADO: Observe o fundo externo. Se houver um ponto central circular (marca de injeção), É INJETADO.
+      - TERMOFORMADO: Se o fundo for liso, sem ponto central, É TERMOFORMADO.
       
-      REGRAS TÉCNICAS DE MOLDAGEM (DIFERENCIAÇÃO FUNDAMENTAL):
-      Analise o fundo (lado externo) da embalagem nas fotos:
-      1. INJETADO: Verifique se existe um PONTO DE INJEÇÃO central (uma pequena marca circular, relevo ou cicatriz exata no centro do fundo, de onde o plástico fluiu para o molde). Se houver esse ponto central, classifique obrigatoriamente como INJETADO.
-      2. TERMOFORMADO: O fundo é liso, sem marcas de ponto central. Pode ter marcas de vácuo, mas nunca o ponto central de injeção.
+      DADOS A EXTRAIR:
+      - CNPJs (todos encontrados), Razão Social, Marca, Descrição do Produto, Conteúdo.
+      - Fabricante da Embalagem, Moldagem, Formato (REDONDO, OVAL, QUADRADO, RETANGULAR).
       
-      Retorne os dados estritamente em JSON.` 
+      Retorne apenas o JSON.` 
     };
+
+    if (!process.env.GEMINI_API_KEY) {
+      console.error("ERRO: GEMINI_API_KEY não configurada no ambiente.");
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-1.5-flash",
